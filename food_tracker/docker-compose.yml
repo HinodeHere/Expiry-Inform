@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  food-tracker:
+    build: .
+    container_name: food_tracker_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      # We will map our Python files here later so we can edit without rebuilding
+      - .:/app 
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai  # Keeps your cron-jobs and database times accurate
