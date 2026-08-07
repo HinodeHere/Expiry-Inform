@@ -50,7 +50,6 @@ Ensure your project directory contains main.py, index.html, inventory.html, requ
 2. Build and Run with Docker
 Open your terminal inside the project directory and run the following commands:
 
-Bash
 # Build the Docker image
 docker build -t food_tracker_app .
 
