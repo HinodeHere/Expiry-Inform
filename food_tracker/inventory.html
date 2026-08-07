@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Food Inventory</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 800px; margin: auto; background: #f4f4f9; }
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+        .nav-btn:hover { background: #5a6268; }
+        
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007bff; color: white; }
+        tr:hover { background-color: #f1f1f1; }
+        
+        .btn-consume { padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-consume:hover { background: #218838; }
+        
+        .status-expired { color: red; font-weight: bold; }
+        .status-warning { color: orange; font-weight: bold; }
+        .status-good { color: green; }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h2>📦 Current Inventory</h2>
+        <a href="/" class="nav-btn">➕ Add New Food</a>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Product Name</th>
+                <th>Expiration Date</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="inventoryTableBody">
+            <tr><td colspan="4">Loading inventory...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        async function loadInventory() {
+            try {
+                const response = await fetch('/api/inventory');
+                const data = await response.json();
+                const tbody = document.getElementById('inventoryTableBody');
+                tbody.innerHTML = ''; // Clear loading text
+
+                if (data.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Your inventory is empty!</td></tr>';
+                    return;
+                }
+
+                const today = new Date();
+                // Set hours to 0 to compare dates properly
+                today.setHours(0, 0, 0, 0); 
+
+                data.items.forEach(item => {
+                    const expDate = new Date(item.expiration_date);
+                    const diffTime = expDate - today;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    let statusHtml = '';
+                    if (diffDays < 0) {
+                        statusHtml = `<span class="status-expired">⚠️ EXPIRED (${Math.abs(diffDays)} days ago)</span>`;
+                    } else if (diffDays === 0) {
+                        statusHtml = `<span class="status-expired">⚠️ Expires Today!</span>`;
+                    } else if (diffDays <= 7) {
+                        statusHtml = `<span class="status-warning">🕒 ${diffDays} day(s) left</span>`;
+                    } else {
+                        statusHtml = `<span class="status-good">${diffDays} days left</span>`;
+                    }
+
+                    const row = `
+                        <tr>
+                            <td><strong>${item.product_name}</strong></td>
+                            <td>${item.expiration_date}</td>
+                            <td>${statusHtml}</td>
+                            <td>
+                                <button class="btn-consume" onclick="consumeItem(${item.id})">✔️ Consume</button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            } catch (error) {
+                console.error("Failed to load inventory:", error);
+                document.getElementById('inventoryTableBody').innerHTML = '<tr><td colspan="4" style="color: red;">Failed to load data.</td></tr>';
+            }
+        }
+
+        async function consumeItem(itemId) {
+            if (!confirm("Mark this item as consumed/deleted?")) return;
+
+            try {
+                const response = await fetch(`/api/consume/${itemId}`, { method: 'POST' });
+                if (response.ok) {
+                    loadInventory(); // Reload the table instantly
+                } else {
+                    alert("Failed to update database.");
+                }
+            } catch (error) {
+                alert("Network error.");
+            }
+        }
+
+        // Load the data as soon as the page opens
+        loadInventory();
+    </script>
+</body>
+</html>

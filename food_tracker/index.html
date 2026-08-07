@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Tracker</title>
+<style>
+        /* Added a universal box-sizing rule here to protect everything */
+        * { box-sizing: border-box; }
+        
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        /* The fix is applied to the line below: */
+        button, .camera-btn { display: block; width: 100%; padding: 15px; background: #007bff; color: white; border: none; border-radius: 8px; font-size: 16px; text-align: center; cursor: pointer; text-decoration: none; margin-bottom: 10px; box-sizing: border-box; }
+        
+        .camera-btn { background: #28a745; }
+        input { width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        label { font-weight: bold; margin-bottom: 5px; display: block; }
+        #statusMessage { color: #d9534f; font-weight: bold; margin-bottom: 15px; }
+    </style></head>
+<body>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">🛒 Add Food to Tracker</h2>
+        <a href="/inventory" style="padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">📦 View Inventory</a>
+    </div>
+
+    <div class="card">
+        <!-- The "capture" attribute tries to open the phone camera directly -->
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+        <label for="cameraInput" class="camera-btn">📸 Snap Photo of Expiry Label</label>
+        <p id="statusMessage"></p>
+    </div>
+
+    <div class="card" id="manualForm">
+        <label>Product Name</label>
+        <input type="text" id="productName" placeholder="e.g., Milk">
+
+        <label>Production Date</label>
+        <input type="date" id="prodDate">
+
+        <label>Shelf Life</label>
+        <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
+
+        <label>Calculated Expiry Date</label>
+        <input type="date" id="expDate">
+
+        <button onclick="saveToDatabase()">Save to Database</button>
+    </div>
+
+    <script>
+        const cameraInput = document.getElementById('cameraInput');
+        const statusMessage = document.getElementById('statusMessage');
+
+        // Listen for when a photo is taken
+        cameraInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            statusMessage.style.color = '#007bff';
+            statusMessage.innerText = '⏳ Scanning image with local AI...';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/scan', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusMessage.style.color = 'green';
+                    statusMessage.innerText = '✅ Scan successful! Please confirm the dates below.';
+                    document.getElementById('prodDate').value = result.production_date;
+                    document.getElementById('shelfLife').value = result.shelf_life;
+                    document.getElementById('expDate').value = result.calculated_expiration;
+                } else {
+                    statusMessage.style.color = 'red';
+                    statusMessage.innerText = '❌ ' + result.error;
+                }
+            } catch (err) {
+                statusMessage.style.color = 'red';
+                statusMessage.innerText = '❌ Connection failed.';
+            }
+        });
+
+        // Save confirmed/manual data to the database
+        async function saveToDatabase() {
+            const name = document.getElementById('productName').value;
+            let pDate = document.getElementById('prodDate').value;
+            const sLife = document.getElementById('shelfLife').value;
+            const eDate = document.getElementById('expDate').value;
+
+            // Enforce that the user types a Product Name
+            if (!name) {
+                alert("Please type a Product Name before saving!");
+                return;
+            }
+            // Enforce that the AI (or user) provided an Expiry Date
+            if (!sLife || !eDate) {
+                alert("Missing Shelf Life or Expiry Date!");
+                return;
+            }
+
+            // If Production Date is blank (Direct EXP), set it to N/A for the database
+            if (!pDate) {
+                pDate = "N/A";
+            }
+
+            const response = await fetch(`/api/add?product_name=${name}&prod_date=${pDate}&shelf_life=${sLife}&exp_date=${eDate}`, { method: 'POST' });
+            if (response.ok) {
+                alert('✅ Saved successfully!');
+                document.getElementById('productName').value = '';
+                document.getElementById('prodDate').value = '';
+                document.getElementById('shelfLife').value = '';
+                document.getElementById('expDate').value = '';
+                statusMessage.innerText = '';
+            } else {
+                alert('❌ Failed to save.');
+            }
+        }
+    </script>
+</body>
+</html>

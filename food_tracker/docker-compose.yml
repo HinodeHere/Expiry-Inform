@@ -12,5 +12,7 @@ services:
       # We will map our Python files here later so we can edit without rebuilding
       - .:/app 
     restart: unless-stopped
+    env_file:             # <-- THIS IS CRITICAL
+      - .env              # <-- THIS TELLS DOCKER TO LOAD THE FILE
     environment:
-      - TZ=Asia/Shanghai  # Keeps your cron-jobs and database times accurate
+      - TZ=Asia/Shanghai

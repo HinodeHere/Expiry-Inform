@@ -1,0 +1,10 @@
+# Secrets
+.env
+
+# Database and User Uploads
+data/
+uploads/
+
+# Python Cache
+__pycache__/
+*.pyc
