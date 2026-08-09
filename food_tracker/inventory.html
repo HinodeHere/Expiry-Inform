@@ -227,10 +227,50 @@
 
         async function updateQuantity(id, newQty) {
             newQty = parseInt(newQty);
-            if (isNaN(newQty) || newQty < 0) return loadInventory(); 
-            if (newQty === 0 && !confirm("Quantity is 0. Mark this item as fully consumed?")) return loadInventory();
-            await fetch(`/api/update_quantity/${id}?quantity=${newQty}`, { method: 'POST' });
-            loadInventory();
+            if (isNaN(newQty)) return loadInventory(); 
+
+            // Find the item's previous quantity so we can revert if cancelled
+            const item = globalItems.find(i => i.id === id);
+            const oldQty = item ? item.quantity : 1;
+
+            if (newQty === 0 && !confirm("Quantity is 0. Mark this item as fully consumed?")) {
+                return loadInventory();
+            }
+
+            // 1. GET AND VERIFY PIN BEFORE FIRING THE FETCH
+            let pin = localStorage.getItem('appPin');
+            if (!pin) {
+                pin = prompt("🔒 Enter App PIN to authorize this action:");
+                if (!pin) {
+                    // User hit ESC or Cancel: revert the input box back to its original state
+                    loadInventory();
+                    return; 
+                }
+                localStorage.setItem('appPin', pin);
+            }
+
+            try {
+                // 2. FIRE THE FETCH WITH THE PIN ATTACHED EXPLICITLY
+                const response = await fetch(`/api/update_quantity/${id}?quantity=${newQty}`, {
+                    method: 'POST',
+                    headers: { 'X-App-PIN': pin }
+                });
+
+                if (response.status === 401) {
+                    localStorage.removeItem('appPin');
+                    alert("❌ Incorrect PIN! Action blocked.");
+                    loadInventory();
+                } else if (!response.ok) {
+                    alert('❌ Failed to update quantity.');
+                    loadInventory();
+                } else {
+                    // Success! Refresh the inventory data
+                    loadInventory();
+                }
+            } catch (err) {
+                alert('❌ Network error.');
+                loadInventory();
+            }
         }
 
         async function consumeItem(id) {
