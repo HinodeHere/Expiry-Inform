@@ -13,9 +13,28 @@ from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from rapidocr_onnxruntime import RapidOCR
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Local Food Tracker API")
-# Get the PIN from the .env file (Defaults to 1234 if missing)
+#from another python file
+from notifier import check_expirations_and_email  # Imports your separate file!
+
+#MAIN CODE
+# --- BACKGROUND SCHEDULER ---
+scheduler = AsyncIOScheduler()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Startup Actions ---
+    # Temporarily change to run every minute for testing
+    scheduler.add_job(check_expirations_and_email, 'cron', minute='*')
+    scheduler.start()
+    yield
+    # --- Shutdown Actions ---
+    scheduler.shutdown()
+
+app = FastAPI(title="Local Food Tracker API", lifespan=lifespan)
+# Get the PIN from the .env file (Defaults to the second number if missing)
 SECRET_PIN = os.getenv("APP_PIN", "051208")
 
 def verify_pin(x_app_pin: str = Header(None)):
