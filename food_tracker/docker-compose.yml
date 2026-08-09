@@ -16,3 +16,13 @@ services:
       - .env              # <-- THIS TELLS DOCKER TO LOAD THE FILE
     environment:
       - TZ=Asia/Shanghai
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare_tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - food-tracker
