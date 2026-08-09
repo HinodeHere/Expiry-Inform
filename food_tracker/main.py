@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, Request, Form, UploadFile, File, Header, HTTPException, Depends, Query
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from rapidocr_onnxruntime import RapidOCR
@@ -40,22 +40,45 @@ def init_db():
                 shelf_life_duration TEXT NOT NULL,
                 expiration_date DATE NOT NULL,
                 is_consumed BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                quantity INTEGER DEFAULT 1,
+                location TEXT DEFAULT 'Unassigned'
             )
         ''')
-        # Safe migration for new features (Quantity & Location)
-        cursor.execute("PRAGMA table_info(inventory)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'quantity' not in columns:
-            cursor.execute("ALTER TABLE inventory ADD COLUMN quantity INTEGER DEFAULT 1")
-        if 'location' not in columns:
-            cursor.execute("ALTER TABLE inventory ADD COLUMN location TEXT DEFAULT 'Unassigned'")
+        
+        # ADDED: New table for the analytics dashboard
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS consumption_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                date_logged DATE NOT NULL
+            )
+        ''')
             
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_expiration ON inventory(expiration_date)')
         conn.commit()
 
 init_db()
 
+# ADDED: Helper function to log consumption/waste for the analytics chart
+def log_action(cursor, item_id, qty_to_log):
+    cursor.execute("SELECT product_name, expiration_date FROM inventory WHERE id = ?", (item_id,))
+    row = cursor.fetchone()
+    if row:
+        product_name, exp_date_str = row[0], row[1]
+        exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        
+        # If today is past the expiration date, it's wasted. Otherwise, it's consumed!
+        action = "Wasted" if today > exp_date else "Consumed"
+        today_str = today.strftime("%Y-%m-%d")
+        
+        # Insert a log for each quantity consumed so the chart tally is perfectly accurate
+        for _ in range(qty_to_log):
+            cursor.execute("INSERT INTO consumption_logs (product_name, action, date_logged) VALUES (?, ?, ?)", 
+                           (product_name, action, today_str))
+            
 # Mount static folder so failed images can be viewed via URL
 app.mount("/failed_data", StaticFiles(directory=FAILED_DIR), name="failed_data")
 
@@ -202,6 +225,11 @@ async def serve_failed_page():
         with open("failed_images.html", "r", encoding="utf-8") as f: return HTMLResponse(content=f.read())
     return HTMLResponse(content="<h1>failed_images.html not found!</h1>", status_code=404)
 
+@app.get("/analytics")
+async def get_analytics_page():
+    """Serves the analytics.html frontend page"""
+    return FileResponse("analytics.html")
+
 @app.post("/api/scan")
 async def scan_labels(files: List[UploadFile] = File(...)):
     combined_text_list, file_bytes_list = [], []
@@ -289,6 +317,11 @@ async def get_failed_images():
 async def consume_item(item_id: int):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+        cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
+        row = cursor.fetchone()
+        qty = row[0] if row else 1
+        
+        log_action(cursor, item_id, qty) # Log it for analytics!
         cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
         conn.commit()
     return {"status": "success"}
@@ -299,8 +332,13 @@ async def decrement_item(item_id: int):
         cursor = conn.cursor()
         cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
         row = cursor.fetchone()
-        if row and row[0] > 1: cursor.execute('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?', (item_id,))
-        else: cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
+        
+        log_action(cursor, item_id, 1) # Log 1 item for analytics!
+        
+        if row and row[0] > 1: 
+            cursor.execute('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?', (item_id,))
+        else: 
+            cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
         conn.commit()
     return {"status": "success"}
 
@@ -308,8 +346,18 @@ async def decrement_item(item_id: int):
 async def update_quantity(item_id: int, quantity: int = Query(...)):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
-        if quantity <= 0: cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
-        else: cursor.execute('UPDATE inventory SET quantity = ? WHERE id = ?', (quantity, item_id))
+        cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
+        row = cursor.fetchone()
+        old_qty = row[0] if row else 0
+        
+        # Only log if the quantity went DOWN (meaning it was consumed)
+        if old_qty > quantity:
+            log_action(cursor, item_id, old_qty - quantity)
+
+        if quantity <= 0: 
+            cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
+        else: 
+            cursor.execute('UPDATE inventory SET quantity = ? WHERE id = ?', (quantity, item_id))
         conn.commit()
     return {"status": "success"}
 
@@ -317,6 +365,12 @@ async def update_quantity(item_id: int, quantity: int = Query(...)):
 async def consume_batch(req: BatchRequest):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+        for item_id in req.item_ids:
+            cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
+            row = cursor.fetchone()
+            qty = row[0] if row else 1
+            log_action(cursor, item_id, qty) # Log for analytics!
+            
         cursor.executemany('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', [(i,) for i in req.item_ids])
         conn.commit()
     return {"status": "success"}
@@ -354,3 +408,22 @@ async def report_error(files: list[UploadFile] = File(...)):
         saved_files.append(safe_filename)
         
     return {"message": "Saved successfully", "files": saved_files}
+
+@app.get("/api/analytics_data")
+async def get_analytics():
+    """Fetches historical consumption and waste logs for the chart."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, product_name, action, date_logged as date FROM consumption_logs ORDER BY date_logged ASC')
+        logs = [dict(row) for row in cursor.fetchall()]
+    return {"logs": logs}
+
+@app.delete("/api/analytics/{log_id}", dependencies=[Depends(verify_pin)])
+async def delete_analytics_datapoint(log_id: int):
+    """Deletes a specific log entry to clean up the graph."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM consumption_logs WHERE id = ?', (log_id,))
+        conn.commit()
+    return {"message": f"Datapoint {log_id} deleted successfully."}
