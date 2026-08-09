@@ -6,20 +6,45 @@
     <title>Food & Expiry Tracker</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { font-family: -apple-system, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         
-        /* ADDED: flex-wrap and gap to prevent button overlapping on mobile */
         .header-container { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        
         .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; }
         .nav-btn:hover { background: #5a6268; }
+        
         .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; margin-bottom: 20px; }
+        
         .btn-scan { display: block; width: 100%; padding: 15px; background-color: #28a745; color: white; text-align: center; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn-scan:hover { background-color: #218838; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; }
+        
+        /* 📱 iOS UI FIXES */
+        label { 
+            display: block; /* Forces label to sit above the input */
+            font-weight: bold; 
+            color: #333; 
+            margin-top: 10px; 
+            margin-bottom: 5px; 
+            font-size: 14px;
+        }
+        
+        input, select { 
+            display: block;
+            width: 100%; 
+            padding: 12px; /* Taller touch targets for thumbs */
+            margin-bottom: 10px; 
+            border: 1px solid #ccc; 
+            border-radius: 5px; 
+            box-sizing: border-box; 
+            font-family: inherit;
+            font-size: 16px; /* Exactly 16px stops iOS auto-zoom */
+            -webkit-appearance: none; /* Overrides the Safari gray blob bug */
+            appearance: none;
+            background-color: white;
+            min-height: 44px;
+        }
+        
+        button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #0056b3; }
-        label { font-weight: bold; color: #333; }
         #statusMessage { font-weight: bold; margin-top: 10px; text-align: center; }
     </style>
 </head>
@@ -37,8 +62,6 @@
         <label for="cameraInput" class="btn-scan">📸 Snap Photo of Expiry Label</label>
         <input type="file" id="cameraInput" accept="image/*" multiple style="display: none;">
         <div id="statusMessage"></div>
-        
-        <!-- ADDED: The Report Button (Hidden by default) -->
         <button id="btnReport" style="display: none; background-color: #ffc107; color: black; margin-top: 15px;" onclick="reportBadScan()">⚠️ Output Incorrect? Save Image for Review</button>
     </div>
 
@@ -63,11 +86,17 @@
             </div>
         </div>
 
-        <label>Production Date</label>
-        <input type="date" id="prodDate">
-
-        <label>Shelf Life</label>
-        <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
+        <!-- Grouped Dates with Flexbox for a cleaner look -->
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+                <label>Production Date</label>
+                <input type="date" id="prodDate">
+            </div>
+            <div style="flex: 1;">
+                <label>Shelf Life</label>
+                <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
+            </div>
+        </div>
 
         <label>Calculated Expiry Date</label>
         <input type="date" id="expDate">
@@ -81,29 +110,29 @@
         window.fetch = async function() {
             let [resource, config] = arguments;
             
-            // Only protect actions that change data (POST/DELETE)
             if (config && (config.method === 'POST' || config.method === 'DELETE')) {
-                let pin = localStorage.getItem('appPin');
-                if (!pin) {
-                    pin = prompt("🔒 Enter App PIN to authorize this action:");
-                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
-                    localStorage.setItem('appPin', pin);
+                // Ignore PIN for the scanning API, only protect database modifiers
+                if (!resource.includes('/api/scan')) {
+                    let pin = localStorage.getItem('appPin');
+                    if (!pin) {
+                        pin = prompt("🔒 Enter App PIN to authorize this action:");
+                        if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                        localStorage.setItem('appPin', pin);
+                    }
+                    config.headers = { ...config.headers, 'X-App-PIN': pin };
                 }
-                
-                // Attach the PIN to the headers
-                config.headers = { ...config.headers, 'X-App-PIN': pin };
             }
             
             let response = await originalFetch(resource, config);
             
-            // If the backend rejects the PIN, clear it and warn the user
             if (response.status === 401) {
                 localStorage.removeItem('appPin');
                 alert("❌ Incorrect PIN! Action blocked.");
             }
             return response;
         };
-        
+
+        // UI Logic
         const cameraInput = document.getElementById('cameraInput');
         const statusMessage = document.getElementById('statusMessage');
 
@@ -136,6 +165,8 @@
                 const response = await fetch('/api/scan', { method: 'POST', body: formData });
                 const result = await response.json();
 
+                document.getElementById('btnReport').style.display = 'block';
+
                 if (response.ok) {
                     statusMessage.style.color = 'green';
                     statusMessage.innerText = '✅ Scan successful! Please confirm the dates.';
@@ -149,12 +180,37 @@
                     statusMessage.style.color = 'red';
                     statusMessage.innerText = '❌ ' + result.error;
                 }
-                document.getElementById('btnReport').style.display = 'block';
             } catch (err) {
                 statusMessage.style.color = 'red';
                 statusMessage.innerText = '❌ Connection failed.';
             }
         });
+
+        async function reportBadScan() {
+            const files = document.getElementById('cameraInput').files;
+            if (files.length === 0) return alert("No image found to report.");
+            
+            const btn = document.getElementById('btnReport');
+            btn.innerText = "⏳ Saving image...";
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
+
+            try {
+                const response = await fetch('/api/report_error', { method: 'POST', body: formData });
+                if (response.ok) {
+                    alert('✅ Image saved to Failed Scans for review!');
+                    btn.style.display = 'none';
+                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                } else {
+                    alert('❌ Failed to save image.');
+                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                }
+            } catch (err) {
+                alert('❌ Network error.');
+                btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+            }
+        }
 
         function recalculateExpiry() {
             const pDate = document.getElementById('prodDate').value;
@@ -178,32 +234,6 @@
             const dd = String(exp.getDate()).padStart(2, '0');
             
             document.getElementById('expDate').value = `${yyyy}-${mm}-${dd}`;
-        }
-
-        async function reportBadScan() {
-            const files = document.getElementById('cameraInput').files;
-            if (files.length === 0) return alert("No image found to report.");
-            
-            const btn = document.getElementById('btnReport');
-            btn.innerText = "⏳ Saving image...";
-
-            const formData = new FormData();
-            for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
-
-            try {
-                const response = await fetch('/api/report_error', { method: 'POST', body: formData });
-                if (response.ok) {
-                    alert('✅ Image saved to Failed Scans for review!');
-                    btn.style.display = 'none'; // Hide it again after success
-                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
-                } else {
-                    alert('❌ Failed to save image.');
-                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
-                }
-            } catch (err) {
-                alert('❌ Network error.');
-                btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
-            }
         }
 
         document.getElementById('prodDate').addEventListener('change', recalculateExpiry);
