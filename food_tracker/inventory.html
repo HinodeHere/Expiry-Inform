@@ -3,114 +3,254 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Food Inventory</title>
+    <title>Inventory Dashboard</title>
     <style>
-        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 800px; margin: auto; background: #f4f4f9; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: #f4f4f9; }
         .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
-        .nav-btn:hover { background: #5a6268; }
+        
+        .toolbar { display: flex; justify-content: space-between; margin-bottom: 15px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn-action { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; }
+        .btn-batch { background: #dc3545; }
+        .btn-dec { background: #ffc107; color: black; margin-right: 5px; }
+        .btn-consume { background: #28a745; }
         
         table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #ddd; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #007bff; color: white; }
-        tr:hover { background-color: #f1f1f1; }
-        
-        .btn-consume { padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .btn-consume:hover { background: #218838; }
+        .qty-input { width: 55px; padding: 4px; border: 1px solid #ccc; border-radius: 5px; text-align: center; font-weight: bold; font-size: 14px; }
+        .loc-badge { background: #e9ecef; color: #495057; padding: 3px 8px; border-radius: 5px; font-size: 12px; }
         
         .status-expired { color: red; font-weight: bold; }
         .status-warning { color: orange; font-weight: bold; }
         .status-good { color: green; }
+
+        .calendar-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+        .calendar-day-header { text-align: center; font-weight: bold; color: #555; padding: 10px 0; }
+        .calendar-cell { min-height: 100px; border: 1px solid #e0e0e0; border-radius: 5px; padding: 5px; background: #fafafa; vertical-align: top; }
+        .calendar-cell.other-month { background: #f0f0f0; color: #aaa; }
+        .calendar-date-num { font-weight: bold; font-size: 14px; margin-bottom: 5px; }
+        .expiry-badge { background: #dc3545; color: white; font-size: 11px; padding: 3px 6px; border-radius: 4px; margin-bottom: 3px; display: block; overflow: hidden; white-space: nowrap; }
+        .expiry-badge.warning { background: #ffc107; color: #333; }
+        .expiry-badge.good { background: #28a745; }
     </style>
 </head>
 <body>
 
     <div class="header-container">
-        <h2>📦 Current Inventory</h2>
-        <a href="/" class="nav-btn">➕ Add New Food</a>
+        <h2 style="margin:0;">📦 Inventory Dashboard</h2>
+        <div>
+            <a href="/" class="nav-btn">➕ Add Food</a>
+            <a href="/failed" class="nav-btn" style="background: #dc3545; margin-left: 5px;">⚠️ Failed Scans</a>
+        </div>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Product Name</th>
-                <th>Expiration Date</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="inventoryTableBody">
-            <tr><td colspan="4">Loading inventory...</td></tr>
-        </tbody>
-    </table>
+    <div class="toolbar">
+        <div>
+            <button class="btn-action" style="background: #007bff;" onclick="switchView('table')">📋 Table</button>
+            <button class="btn-action" style="background: #6c757d;" onclick="switchView('calendar')">📅 Calendar</button>
+        </div>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <select id="locationFilter" onchange="renderTable(); renderCalendar();" style="padding: 8px; border-radius: 5px;">
+                <option value="All">All Locations</option>
+            </select>
+            <button class="btn-action btn-batch" onclick="consumeBatch()">✔️ Consume Selected</button>
+        </div>
+    </div>
+
+    <div id="tableViewContainer">
+        <table>
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll" onclick="toggleAll()"></th>
+                    <th>Product</th>
+                    <th>Loc / Qty</th>
+                    <th>Expiration Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="inventoryTableBody">
+                <tr><td colspan="6" style="text-align: center;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="calendarViewContainer" class="calendar-container">
+        <div class="calendar-header">
+            <button class="btn-action" style="background: #6c757d;" onclick="changeMonth(-1)">◀ Prev</button>
+            <h3 id="calendarMonthYear">Month Year</h3>
+            <button class="btn-action" style="background: #6c757d;" onclick="changeMonth(1)">Next ▶</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
 
     <script>
+        let globalItems = [];
+        let currentMonthDate = new Date();
+
         async function loadInventory() {
             try {
                 const response = await fetch('/api/inventory');
                 const data = await response.json();
-                const tbody = document.getElementById('inventoryTableBody');
-                tbody.innerHTML = ''; // Clear loading text
-
-                if (data.items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Your inventory is empty!</td></tr>';
-                    return;
-                }
-
-                const today = new Date();
-                // Set hours to 0 to compare dates properly
-                today.setHours(0, 0, 0, 0); 
-
-                data.items.forEach(item => {
-                    const expDate = new Date(item.expiration_date);
-                    const diffTime = expDate - today;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                    let statusHtml = '';
-                    if (diffDays < 0) {
-                        statusHtml = `<span class="status-expired">⚠️ EXPIRED (${Math.abs(diffDays)} days ago)</span>`;
-                    } else if (diffDays === 0) {
-                        statusHtml = `<span class="status-expired">⚠️ Expires Today!</span>`;
-                    } else if (diffDays <= 7) {
-                        statusHtml = `<span class="status-warning">🕒 ${diffDays} day(s) left</span>`;
-                    } else {
-                        statusHtml = `<span class="status-good">${diffDays} days left</span>`;
-                    }
-
-                    const row = `
-                        <tr>
-                            <td><strong>${item.product_name}</strong></td>
-                            <td>${item.expiration_date}</td>
-                            <td>${statusHtml}</td>
-                            <td>
-                                <button class="btn-consume" onclick="consumeItem(${item.id})">✔️ Consume</button>
-                            </td>
-                        </tr>
-                    `;
-                    tbody.innerHTML += row;
+                globalItems = data.items;
+                
+                const uniqueLocations = [...new Set(globalItems.map(item => item.location))].sort();
+                const filterSelect = document.getElementById('locationFilter');
+                const currentSelection = filterSelect.value;
+                
+                filterSelect.innerHTML = '<option value="All">All Locations</option>';
+                uniqueLocations.forEach(loc => {
+                    if (loc) filterSelect.innerHTML += `<option value="${loc}">${loc}</option>`;
                 });
-            } catch (error) {
-                console.error("Failed to load inventory:", error);
-                document.getElementById('inventoryTableBody').innerHTML = '<tr><td colspan="4" style="color: red;">Failed to load data.</td></tr>';
-            }
-        }
-
-        async function consumeItem(itemId) {
-            if (!confirm("Mark this item as consumed/deleted?")) return;
-
-            try {
-                const response = await fetch(`/api/consume/${itemId}`, { method: 'POST' });
-                if (response.ok) {
-                    loadInventory(); // Reload the table instantly
-                } else {
-                    alert("Failed to update database.");
+                
+                if (uniqueLocations.includes(currentSelection) || currentSelection === 'All') {
+                    filterSelect.value = currentSelection;
                 }
+
+                renderTable();
+                renderCalendar();
             } catch (error) {
-                alert("Network error.");
+                console.error("Failed to load:", error);
             }
         }
 
-        // Load the data as soon as the page opens
+        function renderTable() {
+            const tbody = document.getElementById('inventoryTableBody');
+            const filterLoc = document.getElementById('locationFilter').value;
+            tbody.innerHTML = '';
+
+            let filteredItems = globalItems;
+            if (filterLoc !== 'All') filteredItems = globalItems.filter(item => item.location === filterLoc);
+
+            if (filteredItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No items found.</td></tr>';
+                return;
+            }
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            filteredItems.forEach(item => {
+                const expDate = new Date(item.expiration_date);
+                const diffDays = Math.ceil((expDate - today) / 86400000);
+
+                let statusHtml = diffDays < 0 ? `<span class="status-expired">⚠️ EXPIRED</span>` :
+                                 diffDays === 0 ? `<span class="status-expired">⚠️ Today!</span>` :
+                                 diffDays <= 7 ? `<span class="status-warning">🕒 ${diffDays} days</span>` :
+                                 `<span class="status-good">${diffDays} days</span>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><input type="checkbox" class="item-checkbox" value="${item.id}"></td>
+                        <td><strong>${item.product_name}</strong></td>
+                        <td>
+                            <span class="loc-badge">${item.location}</span>
+                            <input type="number" class="qty-input" value="${item.quantity}" min="0" onchange="updateQuantity(${item.id}, this.value)" title="Edit Quantity">
+                        </td>
+                        <td>${item.expiration_date}</td>
+                        <td>${statusHtml}</td>
+                        <td>
+                            <button class="btn-action btn-dec" onclick="decrementItem(${item.id})">➖ Use 1</button>
+                            <button class="btn-action btn-consume" onclick="consumeItem(${item.id})">✔️ All</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function toggleAll() {
+            const isChecked = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = isChecked);
+        }
+
+        async function decrementItem(id) {
+            await fetch(`/api/decrement/${id}`, { method: 'POST' });
+            loadInventory();
+        }
+
+        async function updateQuantity(id, newQty) {
+            newQty = parseInt(newQty);
+            if (isNaN(newQty) || newQty < 0) return loadInventory(); 
+            if (newQty === 0 && !confirm("Quantity is 0. Mark this item as fully consumed?")) return loadInventory();
+            await fetch(`/api/update_quantity/${id}?quantity=${newQty}`, { method: 'POST' });
+            loadInventory();
+        }
+
+        async function consumeItem(id) {
+            if (!confirm("Consume all remaining quantity?")) return;
+            await fetch(`/api/consume/${id}`, { method: 'POST' });
+            loadInventory();
+        }
+
+        async function consumeBatch() {
+            const checked = Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => parseInt(cb.value));
+            if (checked.length === 0) return alert("Select items first!");
+            if (!confirm(`Consume ${checked.length} selected items?`)) return;
+
+            await fetch('/api/consume_batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_ids: checked })
+            });
+            loadInventory();
+        }
+
+        function switchView(view) {
+            document.getElementById('tableViewContainer').style.display = view === 'table' ? 'block' : 'none';
+            document.getElementById('calendarViewContainer').style.display = view === 'calendar' ? 'block' : 'none';
+        }
+
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const monthYearLabel = document.getElementById('calendarMonthYear');
+            grid.innerHTML = '';
+
+            const filterLoc = document.getElementById('locationFilter').value;
+            let filteredItems = globalItems;
+            if (filterLoc !== 'All') filteredItems = globalItems.filter(item => item.location === filterLoc);
+
+            const year = currentMonthDate.getFullYear();
+            const month = currentMonthDate.getMonth();
+            monthYearLabel.innerText = currentMonthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => grid.innerHTML += `<div class="calendar-day-header">${d}</div>`);
+
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const totalDays = new Date(year, month + 1, 0).getDate();
+            const prevTotalDays = new Date(year, month, 0).getDate();
+            const today = new Date(); today.setHours(0,0,0,0);
+
+            for (let i = firstDayIndex; i > 0; i--) {
+                grid.innerHTML += `<div class="calendar-cell other-month"><div class="calendar-date-num">${prevTotalDays - i + 1}</div></div>`;
+            }
+
+            for (let day = 1; day <= totalDays; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const matchingItems = filteredItems.filter(item => item.expiration_date === dateStr);
+
+                let badgesHtml = '';
+                matchingItems.forEach(item => {
+                    const expDate = new Date(item.expiration_date);
+                    let badgeClass = expDate < today ? '' : (expDate - today) / 86400000 <= 7 ? 'warning' : 'good';
+                    badgesHtml += `<span class="expiry-badge ${badgeClass}" title="${item.product_name}">📦 [${item.quantity}] ${item.product_name}</span>`;
+                });
+
+                grid.innerHTML += `<div class="calendar-cell"><div class="calendar-date-num">${day}</div>${badgesHtml}</div>`;
+            }
+
+            const totalCellsSoFar = firstDayIndex + totalDays;
+            const remainingCells = (totalCellsSoFar % 7 === 0) ? 0 : 7 - (totalCellsSoFar % 7);
+            for (let i = 1; i <= remainingCells; i++) {
+                grid.innerHTML += `<div class="calendar-cell other-month"><div class="calendar-date-num">${i}</div></div>`;
+            }
+        }
+
+        function changeMonth(dir) { currentMonthDate.setMonth(currentMonthDate.getMonth() + dir); renderCalendar(); }
+        
         loadInventory();
     </script>
 </body>

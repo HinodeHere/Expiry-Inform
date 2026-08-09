@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Failed OCR Scans</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: #f4f4f9; }
+        .header-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+        .nav-btn:hover { background: #5a6268; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        .card img { width: 100%; height: 200px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; margin-bottom: 10px; }
+        .filename { font-size: 12px; color: #555; word-break: break-all; margin-bottom: 10px; }
+        .btn-delete { background-color: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px; }
+        .btn-delete:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h2 style="margin:0;">⚠️ Failed OCR Scans</h2>
+        <div>
+            <a href="/" class="nav-btn">➕ Add Food</a>
+            <a href="/inventory" class="nav-btn" style="margin-left: 5px;">📦 Inventory</a>
+        </div>
+    </div>
+
+    <div class="grid" id="imageGrid">
+        <p>Loading failed images...</p>
+    </div>
+
+    <script>
+        async function loadFailedImages() {
+            try {
+                const res = await fetch('/api/failed_images');
+                const data = await res.json();
+                const grid = document.getElementById('imageGrid');
+                grid.innerHTML = '';
+
+                if (data.images.length === 0) {
+                    grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #666;">No failed scans found! Great job.</p>';
+                    return;
+                }
+
+                data.images.forEach(filename => {
+                    grid.innerHTML += `
+                        <div class="card">
+                            <a href="/failed_data/${filename}" target="_blank">
+                                <img src="/failed_data/${filename}" alt="Failed Scan">
+                            </a>
+                            <div class="filename">${filename}</div>
+                            <button class="btn-delete" onclick="deleteImage('${filename}')">🗑️ Remove</button>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                document.getElementById('imageGrid').innerHTML = '<p style="color: red;">Failed to load images.</p>';
+            }
+        }
+
+        async function deleteImage(filename) {
+            if (!confirm(`Permanently delete ${filename}?`)) return;
+            
+            try {
+                const response = await fetch(`/api/failed_images/${filename}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadFailedImages(); // Reload the grid instantly
+                } else {
+                    alert('❌ Failed to delete image.');
+                }
+            } catch (err) {
+                alert('❌ Network error.');
+            }
+        }
+
+        loadFailedImages();
+    </script>
+</body>
+</html>

@@ -3,3 +3,4 @@ uvicorn
 python-multipart
 rapidocr-onnxruntime
 python-dateutil
+opencv-python-headless
