@@ -22,7 +22,7 @@ services:
     container_name: cloudflare_tunnel
     restart: unless-stopped
     command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    env_file:
+      - .cloudflared.env
     depends_on:
       - food-tracker
