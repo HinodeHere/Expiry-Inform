@@ -26,8 +26,7 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup Actions ---
-    # Temporarily change to run every minute for testing
-    scheduler.add_job(check_expirations_and_email, 'cron', minute='*')
+    scheduler.add_job(check_expirations_and_email, 'cron', hour=8, minute=0)
     scheduler.start()
     yield
     # --- Shutdown Actions ---
