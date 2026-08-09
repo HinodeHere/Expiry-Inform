@@ -2,17 +2,25 @@ import os
 import re
 import sqlite3
 import cv2
+import shutil
+import uuid
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional, List
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, UploadFile, File, Query
+from fastapi import FastAPI, Request, Form, UploadFile, File, Header, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from rapidocr_onnxruntime import RapidOCR
 
 app = FastAPI(title="Local Food Tracker API")
+# Get the PIN from the .env file (Defaults to 1234 if missing)
+SECRET_PIN = os.getenv("APP_PIN", "051208")
+
+def verify_pin(x_app_pin: str = Header(None)):
+    if x_app_pin != SECRET_PIN:
+        raise HTTPException(status_code=401, detail="Unauthorized: Incorrect PIN")
 ocr = RapidOCR()
 
 DB_PATH = "/app/data/inventory.db"
@@ -236,7 +244,7 @@ async def scan_labels(files: List[UploadFile] = File(...)):
         "calculated_expiration": str(exp_date) if exp_date else ""
     }
 
-@app.post("/api/add")
+@app.post("/api/add", dependencies=[Depends(verify_pin)])
 async def add_inventory_item(
     product_name: str = Query(...), prod_date: str = Query(...), shelf_life: str = Query(...),
     exp_date: str = Query(...), quantity: int = Query(1), location: str = Query("Unassigned")
@@ -277,7 +285,7 @@ async def get_failed_images():
     files = sorted(os.listdir(FAILED_DIR), reverse=True)
     return {"images": [f for f in files if f.lower().endswith(('.jpg', '.jpeg', '.png'))]}
 
-@app.post("/api/consume/{item_id}")
+@app.post("/api/consume/{item_id}", dependencies=[Depends(verify_pin)])
 async def consume_item(item_id: int):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -285,7 +293,7 @@ async def consume_item(item_id: int):
         conn.commit()
     return {"status": "success"}
 
-@app.post("/api/decrement/{item_id}")
+@app.post("/api/decrement/{item_id}", dependencies=[Depends(verify_pin)])
 async def decrement_item(item_id: int):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -296,7 +304,7 @@ async def decrement_item(item_id: int):
         conn.commit()
     return {"status": "success"}
 
-@app.post("/api/update_quantity/{item_id}")
+@app.post("/api/update_quantity/{item_id}", dependencies=[Depends(verify_pin)])
 async def update_quantity(item_id: int, quantity: int = Query(...)):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -305,7 +313,7 @@ async def update_quantity(item_id: int, quantity: int = Query(...)):
         conn.commit()
     return {"status": "success"}
 
-@app.post("/api/consume_batch")
+@app.post("/api/consume_batch", dependencies=[Depends(verify_pin)])
 async def consume_batch(req: BatchRequest):
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -313,7 +321,7 @@ async def consume_batch(req: BatchRequest):
         conn.commit()
     return {"status": "success"}
 
-@app.delete("/api/failed_images/{filename}")
+@app.delete("/api/failed_images/{filename}", dependencies=[Depends(verify_pin)])
 async def delete_failed_image(filename: str):
     """Deletes a specific failed image from the server."""
     # Prevent directory traversal attacks
@@ -325,3 +333,24 @@ async def delete_failed_image(filename: str):
         os.remove(file_path)
         return {"status": "success"}
     return JSONResponse(status_code=404, content={"error": "File not found."})
+
+@app.post("/api/report_error")
+async def report_error(files: list[UploadFile] = File(...)):
+    """Manually saves an image to the failed_images folder for user review."""
+    failed_dir = "data/failed_images"
+    os.makedirs(failed_dir, exist_ok=True)
+    
+    saved_files = []
+    for file in files:
+        # Generate a unique filename to prevent overwriting
+        ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        safe_filename = f"reported_{uuid.uuid4().hex[:8]}.{ext}"
+        filepath = os.path.join(failed_dir, safe_filename)
+        
+        # Save the file to the disk
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        saved_files.append(safe_filename)
+        
+    return {"message": "Saved successfully", "files": saved_files}

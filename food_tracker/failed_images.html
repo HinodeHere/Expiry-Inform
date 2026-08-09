@@ -37,6 +37,34 @@
     </div>
 
     <script>
+        // SECURITY INTERCEPTOR: Automatically attach PIN to POST/DELETE requests
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            
+            // Only protect actions that change data (POST/DELETE)
+            if (config && (config.method === 'POST' || config.method === 'DELETE')) {
+                let pin = localStorage.getItem('appPin');
+                if (!pin) {
+                    pin = prompt("🔒 Enter App PIN to authorize this action:");
+                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                    localStorage.setItem('appPin', pin);
+                }
+                
+                // Attach the PIN to the headers
+                config.headers = { ...config.headers, 'X-App-PIN': pin };
+            }
+            
+            let response = await originalFetch(resource, config);
+            
+            // If the backend rejects the PIN, clear it and warn the user
+            if (response.status === 401) {
+                localStorage.removeItem('appPin');
+                alert("❌ Incorrect PIN! Action blocked.");
+            }
+            return response;
+        };
+        
         async function loadFailedImages() {
             try {
                 const res = await fetch('/api/failed_images');

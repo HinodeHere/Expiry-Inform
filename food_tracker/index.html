@@ -37,6 +37,9 @@
         <label for="cameraInput" class="btn-scan">📸 Snap Photo of Expiry Label</label>
         <input type="file" id="cameraInput" accept="image/*" multiple style="display: none;">
         <div id="statusMessage"></div>
+        
+        <!-- ADDED: The Report Button (Hidden by default) -->
+        <button id="btnReport" style="display: none; background-color: #ffc107; color: black; margin-top: 15px;" onclick="reportBadScan()">⚠️ Output Incorrect? Save Image for Review</button>
     </div>
 
     <div class="card" id="manualForm">
@@ -73,6 +76,34 @@
     </div>
 
     <script>
+        // SECURITY INTERCEPTOR: Automatically attach PIN to POST/DELETE requests
+        const originalFetch = window.fetch;
+        window.fetch = async function() {
+            let [resource, config] = arguments;
+            
+            // Only protect actions that change data (POST/DELETE)
+            if (config && (config.method === 'POST' || config.method === 'DELETE')) {
+                let pin = localStorage.getItem('appPin');
+                if (!pin) {
+                    pin = prompt("🔒 Enter App PIN to authorize this action:");
+                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                    localStorage.setItem('appPin', pin);
+                }
+                
+                // Attach the PIN to the headers
+                config.headers = { ...config.headers, 'X-App-PIN': pin };
+            }
+            
+            let response = await originalFetch(resource, config);
+            
+            // If the backend rejects the PIN, clear it and warn the user
+            if (response.status === 401) {
+                localStorage.removeItem('appPin');
+                alert("❌ Incorrect PIN! Action blocked.");
+            }
+            return response;
+        };
+        
         const cameraInput = document.getElementById('cameraInput');
         const statusMessage = document.getElementById('statusMessage');
 
@@ -118,6 +149,7 @@
                     statusMessage.style.color = 'red';
                     statusMessage.innerText = '❌ ' + result.error;
                 }
+                document.getElementById('btnReport').style.display = 'block';
             } catch (err) {
                 statusMessage.style.color = 'red';
                 statusMessage.innerText = '❌ Connection failed.';
@@ -146,6 +178,32 @@
             const dd = String(exp.getDate()).padStart(2, '0');
             
             document.getElementById('expDate').value = `${yyyy}-${mm}-${dd}`;
+        }
+
+        async function reportBadScan() {
+            const files = document.getElementById('cameraInput').files;
+            if (files.length === 0) return alert("No image found to report.");
+            
+            const btn = document.getElementById('btnReport');
+            btn.innerText = "⏳ Saving image...";
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
+
+            try {
+                const response = await fetch('/api/report_error', { method: 'POST', body: formData });
+                if (response.ok) {
+                    alert('✅ Image saved to Failed Scans for review!');
+                    btn.style.display = 'none'; // Hide it again after success
+                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                } else {
+                    alert('❌ Failed to save image.');
+                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                }
+            } catch (err) {
+                alert('❌ Network error.');
+                btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+            }
         }
 
         document.getElementById('prodDate').addEventListener('change', recalculateExpiry);
