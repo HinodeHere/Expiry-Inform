@@ -17,31 +17,8 @@
         .btn-scan { display: block; width: 100%; padding: 15px; background-color: #28a745; color: white; text-align: center; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn-scan:hover { background-color: #218838; }
         
-        /* 📱 iOS UI FIXES */
-        label { 
-            display: block; /* Forces label to sit above the input */
-            font-weight: bold; 
-            color: #333; 
-            margin-top: 10px; 
-            margin-bottom: 5px; 
-            font-size: 14px;
-        }
-        
-        input, select { 
-            display: block;
-            width: 100%; 
-            padding: 12px; /* Taller touch targets for thumbs */
-            margin-bottom: 10px; 
-            border: 1px solid #ccc; 
-            border-radius: 5px; 
-            box-sizing: border-box; 
-            font-family: inherit;
-            font-size: 16px; /* Exactly 16px stops iOS auto-zoom */
-            -webkit-appearance: none; /* Overrides the Safari gray blob bug */
-            appearance: none;
-            background-color: white;
-            min-height: 44px;
-        }
+        label { display: block; font-weight: bold; color: #333; margin-top: 10px; margin-bottom: 5px; font-size: 14px; }
+        input, select { display: block; width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; background-color: white; min-height: 44px; }
         
         button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #0056b3; }
@@ -87,14 +64,13 @@
             </div>
         </div>
 
-        <!-- Grouped Dates with Flexbox for a cleaner look -->
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Production Date</label>
                 <input type="date" id="prodDate">
             </div>
             <div style="flex: 1;">
-                <label>Shelf Life</label>
+                <label>Shelf Life (Optional)</label>
                 <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
             </div>
         </div>
@@ -106,26 +82,24 @@
     </div>
 
     <script>
-        // SECURITY INTERCEPTOR: Automatically attach PIN to POST/DELETE requests
+        let lastRawText = ""; // <--- NEW: Stores the raw OCR output
+
+        // SECURITY INTERCEPTOR
         const originalFetch = window.fetch;
         window.fetch = async function() {
             let [resource, config] = arguments;
-            
             if (config && (config.method === 'POST' || config.method === 'DELETE')) {
-                // Ignore PIN for the scanning API, only protect database modifiers
-                if (!resource.includes('/api/scan')) {
+                if (!resource.includes('/api/scan') && !resource.includes('/api/report_error')) {
                     let pin = localStorage.getItem('appPin');
                     if (!pin) {
                         pin = prompt("🔒 Enter App PIN to authorize this action:");
-                        if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                        if (!pin) throw new Error("Action cancelled.");
                         localStorage.setItem('appPin', pin);
                     }
                     config.headers = { ...config.headers, 'X-App-PIN': pin };
                 }
             }
-            
             let response = await originalFetch(resource, config);
-            
             if (response.status === 401) {
                 localStorage.removeItem('appPin');
                 alert("❌ Incorrect PIN! Action blocked.");
@@ -133,7 +107,6 @@
             return response;
         };
 
-        // UI Logic
         const cameraInput = document.getElementById('cameraInput');
         const statusMessage = document.getElementById('statusMessage');
 
@@ -158,6 +131,7 @@
 
             statusMessage.style.color = '#007bff';
             statusMessage.innerText = `⏳ Scanning ${files.length} image(s)...`;
+            lastRawText = ""; // Reset text on new scan
 
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) formData.append('files', files[i]); 
@@ -174,6 +148,8 @@
                     document.getElementById('prodDate').value = result.production_date;
                     document.getElementById('shelfLife').value = result.shelf_life;
                     document.getElementById('expDate').value = result.calculated_expiration;
+                    lastRawText = result.raw_text; // <--- NEW: Store the text for reporting
+                    
                     if (!document.getElementById('productName').value && result.suggested_name) {
                         document.getElementById('productName').value = result.suggested_name;
                     }
@@ -192,15 +168,16 @@
             if (files.length === 0) return alert("No image found to report.");
             
             const btn = document.getElementById('btnReport');
-            btn.innerText = "⏳ Saving image...";
+            btn.innerText = "⏳ Saving image & text...";
 
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
+            formData.append('raw_text', lastRawText); // <--- NEW: Attach text to payload
 
             try {
                 const response = await fetch('/api/report_error', { method: 'POST', body: formData });
                 if (response.ok) {
-                    alert('✅ Image saved to Failed Scans for review!');
+                    alert('✅ Image and raw text saved to Failed Scans!');
                     btn.style.display = 'none';
                     btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
                 } else {
@@ -243,16 +220,19 @@
         async function saveToDatabase() {
             const name = document.getElementById('productName').value;
             let pDate = document.getElementById('prodDate').value;
-            const sLife = document.getElementById('shelfLife').value;
+            let sLife = document.getElementById('shelfLife').value.trim();
             const eDate = document.getElementById('expDate').value;
             const qty = document.getElementById('quantity').value || 1;
             const loc = document.getElementById('location').value.trim() || "Unassigned";
 
+            // Removed the shelf life check here! Only Expiry Date is strictly required.
             if (!name) return alert("Please type a Product Name!");
-            if (!sLife || !eDate) return alert("Missing Shelf Life or Expiry Date!");
-            if (!pDate) pDate = "N/A";
+            if (!eDate) return alert("Missing Expiry Date!"); 
 
-            const url = `/api/add?product_name=${encodeURIComponent(name)}&prod_date=${pDate}&shelf_life=${sLife}&exp_date=${eDate}&quantity=${qty}&location=${encodeURIComponent(loc)}`;
+            if (!pDate) pDate = "N/A";
+            if (!sLife) sLife = "N/A"; // Defaults to N/A if you leave it blank
+
+            const url = `/api/add?product_name=${encodeURIComponent(name)}&prod_date=${pDate}&shelf_life=${encodeURIComponent(sLife)}&exp_date=${eDate}&quantity=${qty}&location=${encodeURIComponent(loc)}`;
             
             const response = await fetch(url, { method: 'POST' });
             if (response.ok) {

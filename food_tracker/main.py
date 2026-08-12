@@ -15,11 +15,8 @@ from pydantic import BaseModel
 from rapidocr_onnxruntime import RapidOCR
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from contextlib import asynccontextmanager
+from notifier import check_expirations_and_email  # Your separate email file!
 
-#from another python file
-from notifier import check_expirations_and_email  # Imports your separate file!
-
-#MAIN CODE
 # --- BACKGROUND SCHEDULER ---
 scheduler = AsyncIOScheduler()
 
@@ -33,12 +30,14 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 app = FastAPI(title="Local Food Tracker API", lifespan=lifespan)
-# Get the PIN from the .env file (Defaults to the second number if missing)
+
+# Get the PIN from the .env file
 SECRET_PIN = os.getenv("APP_PIN", "051208")
 
 def verify_pin(x_app_pin: str = Header(None)):
     if x_app_pin != SECRET_PIN:
         raise HTTPException(status_code=401, detail="Unauthorized: Incorrect PIN")
+        
 ocr = RapidOCR()
 
 DB_PATH = "/app/data/inventory.db"
@@ -64,7 +63,7 @@ def init_db():
             )
         ''')
         
-        # ADDED: New table for the analytics dashboard
+        # New table for the analytics dashboard
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS consumption_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +78,6 @@ def init_db():
 
 init_db()
 
-# ADDED: Helper function to log consumption/waste for the analytics chart
 def log_action(cursor, item_id, qty_to_log):
     cursor.execute("SELECT product_name, expiration_date FROM inventory WHERE id = ?", (item_id,))
     row = cursor.fetchone()
@@ -88,16 +86,14 @@ def log_action(cursor, item_id, qty_to_log):
         exp_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
         today = datetime.now().date()
         
-        # If today is past the expiration date, it's wasted. Otherwise, it's consumed!
         action = "Wasted" if today > exp_date else "Consumed"
         today_str = today.strftime("%Y-%m-%d")
         
-        # Insert a log for each quantity consumed so the chart tally is perfectly accurate
         for _ in range(qty_to_log):
             cursor.execute("INSERT INTO consumption_logs (product_name, action, date_logged) VALUES (?, ?, ?)", 
                            (product_name, action, today_str))
-            
-# Mount static folder so failed images can be viewed via URL
+
+# Mount static folder so failed images/text can be viewed via URL
 app.mount("/failed_data", StaticFiles(directory=FAILED_DIR), name="failed_data")
 
 class ItemCreate(BaseModel):
@@ -114,11 +110,19 @@ class BatchRequest(BaseModel):
 def extract_dates_and_calculate(ocr_text_list):
     text = " ".join(ocr_text_list)
 
-    # 1A: Direct Expiration Date (Strict Full Date)
-    exp_prefix = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|有效期至|限期使用日期)[\s:：]*'
-    m_cn = re.search(exp_prefix + r'(20\d{2})年(1[0-2]|0?[1-9])月(3[01]|[12]\d|0?[1-9])日?', text, re.IGNORECASE)
-    m_sym = re.search(exp_prefix + r'(20\d{2})([-/.]?)(1[0-2]|0?[1-9])\2(3[01]|[12]\d|0?[1-9])(?!\d)', text, re.IGNORECASE)
+    # Scrub out timecodes (like 12:26 or 12:26142) so they don't become ghost dates!
+    text = re.sub(r'\b\d{1,2}:\d{2}(?::\d{2})?\d*', '', text)
+
+    # 1A: Direct Expiration Date
+    # NEW: Added EX., BEST BEFORE, BEBT BEFORE (typo catcher), and B.B. to the dictionary
+    exp_prefix = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|EX\.|BEST\s*BEFORE|BEBT\s*BEFORE|B\.B\.|有效期至|保质期至|限期使用日期)[\s:：.]*'
     
+    m_cn = re.search(exp_prefix + r'(20\d{2})年(1[0-2]|0?[1-9])月(3[01]|[12]\d|0?[1-9])日?', text, re.IGNORECASE)
+    m_sym = re.search(exp_prefix + r'(20\d{2})([-/.])(1[0-2]|0?[1-9])\2(3[01]|[12]\d|0?[1-9])(?!\d)', text, re.IGNORECASE)
+    
+    # NEW: Catch DD-MM-YYYY format directly after an expiry keyword (Fixes both Buldak and MyKuali!)
+    m_sym_d = re.search(exp_prefix + r'(3[01]|[12]\d|0?[1-9])([-/.])(1[0-2]|0?[1-9])\2(20\d{2})(?!\d)', text, re.IGNORECASE)
+
     if m_cn:
         try:
             y, m, d = map(int, m_cn.groups())
@@ -129,9 +133,14 @@ def extract_dates_and_calculate(ocr_text_list):
             y, m, d = int(m_sym.group(1)), int(m_sym.group(3)), int(m_sym.group(4))
             return "", datetime(y, m, d).date(), "Direct EXP", None
         except ValueError: pass
+    elif m_sym_d:
+        try:
+            d, m, y = int(m_sym_d.group(1)), int(m_sym_d.group(3)), int(m_sym_d.group(4))
+            return "", datetime(y, m, d).date(), "Direct EXP", None
+        except ValueError: pass
 
     # 1B: Direct Expiration Date (MM.YYYY or MM/YY)
-    exp_my_pattern = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|有效期至)[\s:：.]*(1[0-2]|0?[1-9])([-/.])(\d{2}|\d{4})(?!\d)'
+    exp_my_pattern = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|EX\.|BEST\s*BEFORE|有效期至)[\s:：.]*(1[0-2]|0?[1-9])([-/.])(\d{2}|\d{4})(?!\d)'
     exp_my_match = re.search(exp_my_pattern, text, re.IGNORECASE)
     if exp_my_match:
         try:
@@ -141,7 +150,7 @@ def extract_dates_and_calculate(ocr_text_list):
         except ValueError: pass
 
     # 1C: Direct Expiration Date (YYYY.MM)
-    exp_ym_pattern = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|有效期至)[\s:：]*(20\d{2})([-/.]?)(1[0-2]|0?[1-9])(?!\d)'
+    exp_ym_pattern = r'(?:EXPIRY\s*DATE|EXPIRY|EXP\s*DATE|EXP|EX\.|BEST\s*BEFORE|有效期至)[\s:：]*(20\d{2})([-/.]?)(1[0-2]|0?[1-9])(?!\d)'
     exp_ym_match = re.search(exp_ym_pattern, text, re.IGNORECASE)
     if exp_ym_match:
         try:
@@ -201,14 +210,22 @@ def extract_dates_and_calculate(ocr_text_list):
 
     # 4: Universal Date Sorter
     found_dates = set()
-    fallback_8 = r'(20\d{2})[-/年. ]?(1[0-2]|0?[1-9])[-/月. ]?(3[01]|[12]\d|0?[1-9])日?'
-    for m in re.finditer(fallback_8, text):
+    
+    fallback_y_first = r'(20\d{2})[-/年. ]?(1[0-2]|0?[1-9])[-/月. ]?(3[01]|[12]\d|0?[1-9])日?'
+    for m in re.finditer(fallback_y_first, text):
         try:
             y, mo, d = map(int, m.groups())
             found_dates.add(datetime(y, mo, d).date())
         except ValueError: pass
 
-    fallback_6 = r'(20\d{2})[-/年. ](1[0-2]|0?[1-9])(?!\d)'
+    fallback_d_first = r'(3[01]|[12]\d|0?[1-9])[-/ .]+(1[0-2]|0?[1-9])[-/ .]+(20\d{2})'
+    for m in re.finditer(fallback_d_first, text):
+        try:
+            d, mo, y = map(int, m.groups())
+            found_dates.add(datetime(y, mo, d).date())
+        except ValueError: pass
+
+    fallback_6 = r'(20\d{2})[-/年.](1[0-2]|0?[1-9])(?!\d)'
     for m in re.finditer(fallback_6, text):
         try:
             y, mo = map(int, m.groups())
@@ -218,10 +235,68 @@ def extract_dates_and_calculate(ocr_text_list):
     sorted_dates = sorted(list(found_dates))
     if len(sorted_dates) >= 2:
         return sorted_dates[-2], sorted_dates[-1], "Auto-Extracted", None
-    elif len(sorted_dates) == 1 and re.search(r'(EXP|有效期|保质期至|限期)', text, re.IGNORECASE):
+    # NEW: Updated safety net to accept EX., BEST, BEBT, and B.B.
+    elif len(sorted_dates) == 1 and re.search(r'(EXP|EX\.|BEST|BEBT|B\.B|有效期|保质期至|限期)', text, re.IGNORECASE):
         return "", sorted_dates[0], "Auto-Extracted", None
 
     return None, None, None, f"Failed. The AI read: {text}"
+
+# ... (Keep all your HTML serving routes below this exactly the same) ...
+
+@app.post("/api/scan")
+async def scan_labels(files: List[UploadFile] = File(...)):
+    combined_text_list, file_bytes_list = [], []
+    
+    for file in files:
+        contents = await file.read()
+        file_bytes_list.append(contents)
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None: continue
+        
+        result, _ = ocr(img)
+        if result:
+            for line in result: combined_text_list.append(line[1])
+
+    raw_ocr_string = "\n".join(combined_text_list)
+
+    if not combined_text_list:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for i, contents in enumerate(file_bytes_list):
+            base_name = f"{timestamp}_fail_{i}"
+            with open(os.path.join(FAILED_DIR, f"{base_name}.jpg"), "wb") as f: 
+                f.write(contents)
+            with open(os.path.join(FAILED_DIR, f"{base_name}.txt"), "w", encoding="utf-8") as f: 
+                f.write("No text found.")
+        return JSONResponse(status_code=400, content={"error": "Could not read text."})
+
+    prod_date, exp_date, shelf_life, error = extract_dates_and_calculate(combined_text_list)
+    
+    if error:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for i, contents in enumerate(file_bytes_list):
+            base_name = f"{timestamp}_fail_{i}"
+            with open(os.path.join(FAILED_DIR, f"{base_name}.jpg"), "wb") as f: 
+                f.write(contents)
+            with open(os.path.join(FAILED_DIR, f"{base_name}.txt"), "w", encoding="utf-8") as f: 
+                f.write(f"RAW OCR TEXT:\n{raw_ocr_string}\n\nERROR:\n{error}")
+        return JSONResponse(status_code=400, content={"error": error})
+
+    suggested_name = ""
+    for text in combined_text_list:
+        # NEW: Added EX., BEST, and BEBT to the ignore pattern so it doesn't try to use the expiry line as the product name!
+        ignore_pattern = r'(EXP|EX\.|BEST|BEBT|B\.B|PROD|MFG|日期|批号|20\d{2}|[0-9]{4}|[0-9]{2}\.[0-9]{2}|\d+\s*(mg|g|ml|kg|l|oz|lb)\b)'
+        if len(text) > 2 and not re.search(ignore_pattern, text, re.IGNORECASE):
+            suggested_name = text
+            break
+
+    return {
+        "suggested_name": suggested_name,
+        "production_date": str(prod_date) if prod_date else "",
+        "shelf_life": shelf_life,
+        "calculated_expiration": str(exp_date) if exp_date else "",
+        "raw_text": raw_ocr_string 
+    }
 
 # --- ROUTES ---
 
@@ -245,7 +320,6 @@ async def serve_failed_page():
 
 @app.get("/analytics")
 async def get_analytics_page():
-    """Serves the analytics.html frontend page"""
     return FileResponse("analytics.html")
 
 @app.post("/api/scan")
@@ -263,23 +337,35 @@ async def scan_labels(files: List[UploadFile] = File(...)):
         if result:
             for line in result: combined_text_list.append(line[1])
 
+    raw_ocr_string = "\n".join(combined_text_list)
+
     if not combined_text_list:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         for i, contents in enumerate(file_bytes_list):
-            with open(os.path.join(FAILED_DIR, f"{timestamp}_fail_{i}.jpg"), "wb") as f: f.write(contents)
-        return JSONResponse(status_code=400, content={"error": "Could not read text. Image saved to failed queue."})
+            base_name = f"{timestamp}_fail_{i}"
+            with open(os.path.join(FAILED_DIR, f"{base_name}.jpg"), "wb") as f: 
+                f.write(contents)
+            with open(os.path.join(FAILED_DIR, f"{base_name}.txt"), "w", encoding="utf-8") as f: 
+                f.write("No text found.")
+        return JSONResponse(status_code=400, content={"error": "Could not read text."})
 
     prod_date, exp_date, shelf_life, error = extract_dates_and_calculate(combined_text_list)
     
     if error:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         for i, contents in enumerate(file_bytes_list):
-            with open(os.path.join(FAILED_DIR, f"{timestamp}_fail_{i}.jpg"), "wb") as f: f.write(contents)
+            base_name = f"{timestamp}_fail_{i}"
+            with open(os.path.join(FAILED_DIR, f"{base_name}.jpg"), "wb") as f: 
+                f.write(contents)
+            with open(os.path.join(FAILED_DIR, f"{base_name}.txt"), "w", encoding="utf-8") as f: 
+                f.write(f"RAW OCR TEXT:\n{raw_ocr_string}\n\nERROR:\n{error}")
         return JSONResponse(status_code=400, content={"error": error})
 
     suggested_name = ""
     for text in combined_text_list:
-        if len(text) > 2 and not re.search(r'(EXP|PROD|MFG|日期|批号|20\d{2}|[0-9]{4}|[0-9]{2}\.[0-9]{2})', text, re.IGNORECASE):
+        # NEW: Added \d+\s*(mg|g|ml|kg|l|oz) to ignore weights and measurements like "137mg"
+        ignore_pattern = r'(EXP|PROD|MFG|日期|批号|20\d{2}|[0-9]{4}|[0-9]{2}\.[0-9]{2}|\d+\s*(mg|g|ml|kg|l|oz|lb)\b)'
+        if len(text) > 2 and not re.search(ignore_pattern, text, re.IGNORECASE):
             suggested_name = text
             break
 
@@ -287,7 +373,8 @@ async def scan_labels(files: List[UploadFile] = File(...)):
         "suggested_name": suggested_name,
         "production_date": str(prod_date) if prod_date else "",
         "shelf_life": shelf_life,
-        "calculated_expiration": str(exp_date) if exp_date else ""
+        "calculated_expiration": str(exp_date) if exp_date else "",
+        "raw_text": raw_ocr_string 
     }
 
 @app.post("/api/add", dependencies=[Depends(verify_pin)])
@@ -339,7 +426,7 @@ async def consume_item(item_id: int):
         row = cursor.fetchone()
         qty = row[0] if row else 1
         
-        log_action(cursor, item_id, qty) # Log it for analytics!
+        log_action(cursor, item_id, qty)
         cursor.execute('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', (item_id,))
         conn.commit()
     return {"status": "success"}
@@ -351,7 +438,7 @@ async def decrement_item(item_id: int):
         cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
         row = cursor.fetchone()
         
-        log_action(cursor, item_id, 1) # Log 1 item for analytics!
+        log_action(cursor, item_id, 1)
         
         if row and row[0] > 1: 
             cursor.execute('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?', (item_id,))
@@ -368,7 +455,6 @@ async def update_quantity(item_id: int, quantity: int = Query(...)):
         row = cursor.fetchone()
         old_qty = row[0] if row else 0
         
-        # Only log if the quantity went DOWN (meaning it was consumed)
         if old_qty > quantity:
             log_action(cursor, item_id, old_qty - quantity)
 
@@ -387,7 +473,7 @@ async def consume_batch(req: BatchRequest):
             cursor.execute('SELECT quantity FROM inventory WHERE id = ?', (item_id,))
             row = cursor.fetchone()
             qty = row[0] if row else 1
-            log_action(cursor, item_id, qty) # Log for analytics!
+            log_action(cursor, item_id, qty)
             
         cursor.executemany('UPDATE inventory SET is_consumed = 1, quantity = 0 WHERE id = ?', [(i,) for i in req.item_ids])
         conn.commit()
@@ -395,41 +481,47 @@ async def consume_batch(req: BatchRequest):
 
 @app.delete("/api/failed_images/{filename}", dependencies=[Depends(verify_pin)])
 async def delete_failed_image(filename: str):
-    """Deletes a specific failed image from the server."""
-    # Prevent directory traversal attacks
     if ".." in filename or "/" in filename:
         return JSONResponse(status_code=400, content={"error": "Invalid filename."})
     
-    file_path = os.path.join(FAILED_DIR, filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        return {"status": "success"}
-    return JSONResponse(status_code=404, content={"error": "File not found."})
+    # Delete the image
+    img_path = os.path.join(FAILED_DIR, filename)
+    if os.path.exists(img_path):
+        os.remove(img_path)
+        
+    # Also delete the associated text file if it exists!
+    txt_filename = filename.rsplit('.', 1)[0] + '.txt'
+    txt_path = os.path.join(FAILED_DIR, txt_filename)
+    if os.path.exists(txt_path):
+        os.remove(txt_path)
+        
+    return {"status": "success"}
 
 @app.post("/api/report_error")
-async def report_error(files: list[UploadFile] = File(...)):
-    """Manually saves an image to the failed_images folder for user review."""
+async def report_error(files: list[UploadFile] = File(...), raw_text: str = Form("No text captured")):
     failed_dir = "data/failed_images"
     os.makedirs(failed_dir, exist_ok=True)
     
     saved_files = []
     for file in files:
-        # Generate a unique filename to prevent overwriting
         ext = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
-        safe_filename = f"reported_{uuid.uuid4().hex[:8]}.{ext}"
-        filepath = os.path.join(failed_dir, safe_filename)
+        base_name = f"reported_{uuid.uuid4().hex[:8]}"
+        img_path = os.path.join(failed_dir, f"{base_name}.{ext}")
+        txt_path = os.path.join(failed_dir, f"{base_name}.txt")
         
-        # Save the file to the disk
-        with open(filepath, "wb") as buffer:
+        with open(img_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        saved_files.append(safe_filename)
+        # NEW: Save the raw text we received from the frontend
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(raw_text)
+            
+        saved_files.append(f"{base_name}.{ext}")
         
     return {"message": "Saved successfully", "files": saved_files}
 
 @app.get("/api/analytics_data")
 async def get_analytics():
-    """Fetches historical consumption and waste logs for the chart."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -439,7 +531,6 @@ async def get_analytics():
 
 @app.delete("/api/analytics/{log_id}", dependencies=[Depends(verify_pin)])
 async def delete_analytics_datapoint(log_id: int):
-    """Deletes a specific log entry to clean up the graph."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute('DELETE FROM consumption_logs WHERE id = ?', (log_id,))

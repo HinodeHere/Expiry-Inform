@@ -3,112 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Failed OCR Scans</title>
+    <title>Failed Scans</title>
     <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: #f4f4f9; }
+        body { font-family: -apple-system, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         
-        /* ADDED: flex-wrap and gap to prevent button overlapping on mobile */
-        .header-container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        
+        .header-container { width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
         .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
         .nav-btn:hover { background: #5a6268; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-        .card img { width: 100%; height: 200px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; margin-bottom: 10px; }
-        .filename { font-size: 12px; color: #555; word-break: break-all; margin-bottom: 10px; }
-        .btn-delete { background-color: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 5px; }
+        .gallery { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 600px; }
+        .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+        img { width: 100%; border-radius: 5px; margin-bottom: 10px; }
+        
+        .raw-text-box { background: #e9ecef; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; color: #333; white-space: pre-wrap; overflow-x: auto; margin-bottom: 10px; }
+        
+        .btn-delete { background-color: #dc3545; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; }
         .btn-delete:hover { background-color: #c82333; }
+        .no-data { text-align: center; color: #666; margin-top: 50px; }
     </style>
 </head>
 <body>
 
     <div class="header-container">
-        <h2 style="margin:0;">⚠️ Failed OCR Scans</h2>
+        <h2 style="margin:0;">⚠️ Failed Scans</h2>
         <div>
             <a href="/" class="nav-btn">➕ Add Food</a>
-            <a href="/inventory" class="nav-btn" style="margin-left: 5px;">📦 Inventory</a>
+            <a href="/inventory" class="nav-btn" style="margin-left:5px;">📦 Inventory</a>
         </div>
     </div>
 
-    <div class="grid" id="imageGrid">
-        <p>Loading failed images...</p>
+    <div class="gallery" id="gallery">
+        <p class="no-data">Loading images...</p>
     </div>
 
     <script>
-        // SECURITY INTERCEPTOR: Automatically attach PIN to POST/DELETE requests
+        // SECURITY INTERCEPTOR
         const originalFetch = window.fetch;
         window.fetch = async function() {
             let [resource, config] = arguments;
-            
-            // Only protect actions that change data (POST/DELETE)
-            if (config && (config.method === 'POST' || config.method === 'DELETE')) {
+            if (config && config.method === 'DELETE') {
                 let pin = localStorage.getItem('appPin');
                 if (!pin) {
                     pin = prompt("🔒 Enter App PIN to authorize this action:");
-                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                    if (!pin) throw new Error("Action cancelled.");
                     localStorage.setItem('appPin', pin);
                 }
-                
-                // Attach the PIN to the headers
                 config.headers = { ...config.headers, 'X-App-PIN': pin };
             }
-            
             let response = await originalFetch(resource, config);
-            
-            // If the backend rejects the PIN, clear it and warn the user
             if (response.status === 401) {
                 localStorage.removeItem('appPin');
-                alert("❌ Incorrect PIN! Action blocked.");
+                alert("❌ Incorrect PIN!");
             }
             return response;
         };
-        
-        async function loadFailedImages() {
+
+        async function loadImages() {
+            const gallery = document.getElementById('gallery');
             try {
-                const res = await fetch('/api/failed_images');
-                const data = await res.json();
-                const grid = document.getElementById('imageGrid');
-                grid.innerHTML = '';
+                const response = await fetch('/api/failed_images');
+                const data = await response.json();
 
                 if (data.images.length === 0) {
-                    grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #666;">No failed scans found! Great job.</p>';
+                    gallery.innerHTML = '<p class="no-data">✅ No failed scans found! Good job.</p>';
                     return;
                 }
 
-                data.images.forEach(filename => {
-                    grid.innerHTML += `
+                gallery.innerHTML = '';
+                for (const file of data.images) {
+                    // Try to fetch the corresponding .txt file
+                    const txtFile = file.substring(0, file.lastIndexOf('.')) + '.txt';
+                    let rawText = "No text captured.";
+                    try {
+                        const txtResponse = await fetch(`/failed_data/${txtFile}`);
+                        if (txtResponse.ok) {
+                            rawText = await txtResponse.text();
+                        }
+                    } catch(e) {} // Ignore if no text file exists
+
+                    gallery.innerHTML += `
                         <div class="card">
-                            <a href="/failed_data/${filename}" target="_blank">
-                                <img src="/failed_data/${filename}" alt="Failed Scan">
-                            </a>
-                            <div class="filename">${filename}</div>
-                            <button class="btn-delete" onclick="deleteImage('${filename}')">🗑️ Remove</button>
+                            <img src="/failed_data/${file}" alt="Failed scan">
+                            <strong>Raw OCR Output:</strong>
+                            <div class="raw-text-box">${rawText}</div>
+                            <button class="btn-delete" onclick="deleteImage('${file}')">🗑️ Delete Record</button>
                         </div>
                     `;
-                });
+                }
             } catch (err) {
-                document.getElementById('imageGrid').innerHTML = '<p style="color: red;">Failed to load images.</p>';
+                gallery.innerHTML = '<p class="no-data" style="color:red;">❌ Error loading data.</p>';
             }
         }
 
         async function deleteImage(filename) {
-            if (!confirm(`Permanently delete ${filename}?`)) return;
+            if (!confirm("Delete this image and its raw text permanently?")) return;
             
-            try {
-                const response = await fetch(`/api/failed_images/${filename}`, { method: 'DELETE' });
-                if (response.ok) {
-                    loadFailedImages(); // Reload the grid instantly
-                } else {
-                    alert('❌ Failed to delete image.');
-                }
-            } catch (err) {
-                alert('❌ Network error.');
+            const response = await fetch(`/api/failed_images/${filename}`, { method: 'DELETE' });
+            if (response.ok) {
+                loadImages(); // Refresh the list
             }
         }
 
-        loadFailedImages();
+        window.onload = loadImages;
     </script>
 </body>
 </html>
