@@ -23,6 +23,18 @@
         button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         button:hover { background-color: #0056b3; }
         #statusMessage { font-weight: bold; margin-top: 10px; text-align: center; }
+
+        /* NEW UI ADDITIONS */
+        .input-wrapper { position: relative; display: flex; align-items: center; margin-bottom: 10px; }
+        .input-wrapper input { margin-bottom: 0; padding-right: 40px; /* Leaves space so text doesn't type under the X */ }
+        .clear-btn { position: absolute; right: 5px; background: transparent; border: none; color: #888; font-size: 16px; padding: 0; margin: 0; width: 30px; min-height: 30px; cursor: pointer; margin-top: 0; display: flex; align-items: center; justify-content: center; }
+        .clear-btn:hover { background: transparent; color: #dc3545; }
+
+        .qty-wrapper { display: flex; align-items: center; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; background: white; margin-bottom: 10px; height: 44px; }
+        .qty-wrapper input { border: none; margin: 0; border-radius: 0; text-align: center; width: 100%; -moz-appearance: textfield; min-height: auto; padding: 0; }
+        .qty-wrapper input::-webkit-outer-spin-button, .qty-wrapper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .qty-btn { background: #e9ecef; color: #333; border: none; padding: 0 15px; font-size: 20px; font-weight: bold; cursor: pointer; margin: 0; border-radius: 0; height: 100%; width: auto; display: flex; align-items: center; justify-content: center; }
+        .qty-btn:hover { background: #d3d9df; }
     </style>
 </head>
 <body>
@@ -45,13 +57,22 @@
 
     <div class="card" id="manualForm">
         <label>Product Name</label>
-        <input list="nameHistory" type="text" id="productName" placeholder="e.g., Milk">
+        <!-- NEW: Clearable Product Name Input -->
+        <div class="input-wrapper">
+            <input list="nameHistory" type="text" id="productName" placeholder="e.g., Milk">
+            <button type="button" class="clear-btn" onclick="document.getElementById('productName').value = ''">✖</button>
+        </div>
         <datalist id="nameHistory"></datalist>
 
         <div style="display: flex; gap: 10px;">
             <div style="flex: 1;">
                 <label>Quantity</label>
-                <input type="number" id="quantity" value="1" min="1">
+                <!-- NEW: Quantity Stepper -->
+                <div class="qty-wrapper">
+                    <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
+                    <input type="number" id="quantity" value="1" min="1">
+                    <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+                </div>
             </div>
             <div style="flex: 1;">
                 <label>Location (Optional)</label>
@@ -70,7 +91,7 @@
                 <input type="date" id="prodDate">
             </div>
             <div style="flex: 1;">
-                <label>Shelf Life (Optional)</label>
+                <label>Shelf Life</label>
                 <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
             </div>
         </div>
@@ -82,7 +103,16 @@
     </div>
 
     <script>
-        let lastRawText = ""; // <--- NEW: Stores the raw OCR output
+        let lastRawText = ""; 
+
+        // Quantity Stepper Logic
+        function changeQty(amount) {
+            const qtyInput = document.getElementById('quantity');
+            let currentValue = parseInt(qtyInput.value) || 1;
+            let newValue = currentValue + amount;
+            if (newValue < 1) newValue = 1; // Prevent going to 0 or negatives
+            qtyInput.value = newValue;
+        }
 
         // SECURITY INTERCEPTOR
         const originalFetch = window.fetch;
@@ -131,7 +161,7 @@
 
             statusMessage.style.color = '#007bff';
             statusMessage.innerText = `⏳ Scanning ${files.length} image(s)...`;
-            lastRawText = ""; // Reset text on new scan
+            lastRawText = ""; 
 
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) formData.append('files', files[i]); 
@@ -148,7 +178,7 @@
                     document.getElementById('prodDate').value = result.production_date;
                     document.getElementById('shelfLife').value = result.shelf_life;
                     document.getElementById('expDate').value = result.calculated_expiration;
-                    lastRawText = result.raw_text; // <--- NEW: Store the text for reporting
+                    lastRawText = result.raw_text; 
                     
                     if (!document.getElementById('productName').value && result.suggested_name) {
                         document.getElementById('productName').value = result.suggested_name;
@@ -172,7 +202,7 @@
 
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) formData.append('files', files[i]);
-            formData.append('raw_text', lastRawText); // <--- NEW: Attach text to payload
+            formData.append('raw_text', lastRawText); 
 
             try {
                 const response = await fetch('/api/report_error', { method: 'POST', body: formData });
@@ -225,12 +255,11 @@
             const qty = document.getElementById('quantity').value || 1;
             const loc = document.getElementById('location').value.trim() || "Unassigned";
 
-            // Removed the shelf life check here! Only Expiry Date is strictly required.
             if (!name) return alert("Please type a Product Name!");
             if (!eDate) return alert("Missing Expiry Date!"); 
 
             if (!pDate) pDate = "N/A";
-            if (!sLife) sLife = "N/A"; // Defaults to N/A if you leave it blank
+            if (!sLife) sLife = "N/A";
 
             const url = `/api/add?product_name=${encodeURIComponent(name)}&prod_date=${pDate}&shelf_life=${encodeURIComponent(sLife)}&exp_date=${eDate}&quantity=${qty}&location=${encodeURIComponent(loc)}`;
             
