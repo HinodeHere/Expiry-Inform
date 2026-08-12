@@ -3,24 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consumption Analytics</title>
-    <!-- Import Chart.js -->
+    <title>🍏 FreshTrack - Analytics</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --bg-color: #f4f4f9; --card-bg: white; --text-color: #333; 
+            --shadow: rgba(0,0,0,0.1); --border-color: #ddd;
+        }
+        [data-theme="dark"] {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #f4f4f9; 
+            --shadow: rgba(0,0,0,0.5); --border-color: #444;
+        }
+
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: #f4f4f9; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: var(--bg-color); color: var(--text-color); transition: 0.3s;}
         
-        .header-container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        .header-container { display: flex; justify-content: flex-start; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
         .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px;}
         .nav-btn:hover { background: #5a6268; }
         
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px var(--shadow); margin-bottom: 20px; transition: 0.3s; }
         
         /* Table Styling */
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
-        table { width: 100%; border-collapse: collapse; background: white; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; white-space: nowrap; font-size: 14px;}
-        th { background-color: #007bff; color: white; }
+        table { width: 100%; border-collapse: collapse; background: var(--card-bg); color: var(--text-color); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; font-size: 14px;}
+        th { background-color: #007bff; color: white; border-bottom: none;}
         .btn-delete { background-color: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         
         .badge-consumed { background: #28a745; color: white; padding: 3px 8px; border-radius: 5px; font-size: 12px; }
@@ -28,22 +36,18 @@
     </style>
 </head>
 <body>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('appTheme') || 'light');</script>
 
     <div class="header-container">
+        <a href="/" class="nav-btn">⬅ Back to Dashboard</a>
         <h2 style="margin:0;">📊 Analytics</h2>
-        <div>
-            <a href="/" class="nav-btn">➕ Add Food</a>
-            <a href="/inventory" class="nav-btn" style="margin-left: 5px;">📦 Inventory</a>
-        </div>
     </div>
 
-    <!-- The Chart -->
     <div class="card">
         <canvas id="consumptionChart" style="width: 100%; max-height: 300px;"></canvas>
     </div>
 
-    <!-- The Editable Data Table -->
-    <h3 style="color: #333;">Raw Data (Edit/Remove Tests)</h3>
+    <h3 style="margin-top: 0;">Raw Data</h3>
     <div class="card table-responsive" style="padding: 0;">
         <table>
             <thead>
@@ -61,7 +65,6 @@
     </div>
 
     <script>
-        // SECURITY INTERCEPTOR
         const originalFetch = window.fetch;
         window.fetch = async function() {
             let [resource, config] = arguments;
@@ -69,16 +72,15 @@
                 let pin = localStorage.getItem('appPin');
                 if (!pin) {
                     pin = prompt("🔒 Enter App PIN to authorize this action:");
-                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
+                    if (!pin) throw new Error("Action cancelled.");
                     localStorage.setItem('appPin', pin);
                 }
                 config.headers = { ...config.headers, 'X-App-PIN': pin };
             }
-            
             let response = await originalFetch(resource, config);
             if (response.status === 401) {
                 localStorage.removeItem('appPin');
-                alert("❌ Incorrect PIN! Action blocked.");
+                alert("❌ Incorrect PIN!");
             }
             return response;
         };
@@ -89,7 +91,6 @@
             try {
                 const res = await fetch('/api/analytics_data');
                 const data = await res.json();
-                
                 renderTable(data.logs);
                 renderChart(data.logs);
             } catch (err) {
@@ -113,9 +114,7 @@
                         <td>${log.date}</td>
                         <td><strong>${log.product_name}</strong></td>
                         <td><span class="${badgeClass}">${log.action}</span></td>
-                        <td>
-                            <button class="btn-delete" onclick="deleteDatapoint(${log.id})">🗑️ Delete</button>
-                        </td>
+                        <td><button class="btn-delete" onclick="deleteDatapoint(${log.id})">🗑️ Delete</button></td>
                     </tr>
                 `;
             });
@@ -123,49 +122,45 @@
 
         async function deleteDatapoint(id) {
             if (!confirm("Remove this datapoint from your analytics?")) return;
-            
             const response = await fetch(`/api/analytics/${id}`, { method: 'DELETE' });
-            if (response.ok) {
-                loadAnalytics(); // Reload everything to update the chart instantly
-            }
+            if (response.ok) loadAnalytics(); 
         }
 
         function renderChart(logs) {
             const ctx = document.getElementById('consumptionChart').getContext('2d');
             
-            // Tally up the actions
-            let consumed = 0;
-            let wasted = 0;
+            let consumed = 0; let wasted = 0;
             logs.forEach(log => {
                 if (log.action === 'Consumed') consumed++;
                 if (log.action === 'Wasted') wasted++;
             });
 
-            // Destroy old chart if it exists so we can redraw it cleanly
             if (myChart) myChart.destroy();
 
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
             myChart = new Chart(ctx, {
-                type: 'doughnut', // 'bar' or 'line' also work great here!
+                type: 'doughnut', 
                 data: {
                     labels: ['Consumed', 'Wasted'],
                     datasets: [{
                         data: [consumed, wasted],
                         backgroundColor: ['#28a745', '#dc3545'],
-                        borderWidth: 1
+                        borderWidth: 1,
+                        borderColor: isDark ? '#1e1e1e' : 'white'
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { position: 'bottom' }
+                        legend: { position: 'bottom', labels: { color: isDark ? '#f4f4f9' : '#333' } }
                     }
                 }
             });
         }
 
-        // Initialize on load
-        loadAnalytics();
+        window.onload = loadAnalytics;
     </script>
 </body>
 </html>

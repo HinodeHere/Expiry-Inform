@@ -3,233 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Dashboard</title>
+    <title>🍏 FreshTrack - Inventory</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 1000px; margin: auto; background: #f4f4f9; }
-        
-        /* ADDED: flex-wrap to stop buttons from crushing the title */
-        .header-container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        
-        .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
-        
-        /* ADDED: flex-wrap to toolbar to stop elements squishing on mobile */
-        .toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 15px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .btn-action { padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; }
-        .btn-batch { background: #dc3545; }
-        .btn-dec { background: #ffc107; color: black; margin-right: 5px; }
-        .btn-consume { background: #28a745; }
-        
-        /* ADDED: The responsive table wrapper CSS */
-        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; }
-        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 10px; overflow: hidden; }
-        
-        /* ADDED: white-space: nowrap forces text to stay on one line instead of squishing */
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; white-space: nowrap; }
-        
-        th { background-color: #007bff; color: white; }
-        .qty-input { width: 55px; padding: 4px; border: 1px solid #ccc; border-radius: 5px; text-align: center; font-weight: bold; font-size: 14px; }
-        .loc-badge { background: #e9ecef; color: #495057; padding: 3px 8px; border-radius: 5px; font-size: 12px; }
-        
-        .status-expired { color: red; font-weight: bold; }
-        .status-warning { color: orange; font-weight: bold; }
-        .status-good { color: green; }
-
-        .calendar-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: none; }
-        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
-        .calendar-day-header { text-align: center; font-weight: bold; color: #555; padding: 10px 0; }
-        .calendar-cell { min-height: 100px; border: 1px solid #e0e0e0; border-radius: 5px; padding: 5px; background: #fafafa; vertical-align: top; }
-        .calendar-cell.other-month { background: #f0f0f0; color: #aaa; }
-        .calendar-date-num { font-weight: bold; font-size: 14px; margin-bottom: 5px; }
-        .expiry-badge { background: #dc3545; color: white; font-size: 11px; padding: 3px 6px; border-radius: 4px; margin-bottom: 3px; display: block; overflow: hidden; white-space: nowrap; }
-        .expiry-badge.warning { background: #ffc107; color: #333; }
-        .expiry-badge.good { background: #28a745; }
-
-        /* ADDED: Calendar horizontal scrolling */
-        .calendar-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; min-width: 600px; /* Forces scrolling on narrow screens */ }
-
-        /* ADDED: Mobile optimizations to shrink table/calendar padding so more fits on screen */
-        @media (max-width: 600px) {
-            th, td { padding: 8px 6px; font-size: 14px; }
-            .btn-action { padding: 6px 8px; font-size: 12px; }
-            .calendar-cell { min-height: 80px; }
+        :root {
+            --bg-color: #f4f4f9; --card-bg: white; --text-color: #333; 
+            --shadow: rgba(0,0,0,0.1); --border-color: #ddd;
         }
+        [data-theme="dark"] {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #f4f4f9; 
+            --shadow: rgba(0,0,0,0.5); --border-color: #444;
+        }
+        body { font-family: -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); padding: 20px; max-width: 800px; margin: auto; transition: background-color 0.3s, color 0.3s; }
+        
+        .header-container { display: flex; justify-content: flex-start; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+        .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+        .nav-btn:hover { background: #5a6268; }
+        
+        .card { background: var(--card-bg); padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px var(--shadow); margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; transition: background-color 0.3s;}
+        
+        .item-info { flex: 2; min-width: 200px; }
+        .item-info h3 { margin: 0 0 5px 0; }
+        .item-info p { margin: 2px 0; font-size: 14px; opacity: 0.8; }
+        
+        .qty-controls { display: flex; align-items: center; gap: 10px; background: var(--bg-color); padding: 5px; border-radius: 5px; border: 1px solid var(--border-color); transition: background-color 0.3s;}
+        .qty-btn { background: transparent; color: var(--text-color); border: none; font-size: 18px; font-weight: bold; cursor: pointer; padding: 5px 10px; }
+        .qty-display { font-weight: bold; min-width: 20px; text-align: center; }
+        
+        /* NEW BUTTON STYLES */
+        .action-buttons { display: flex; gap: 10px; width: 100%; margin-top: 5px; }
+        .btn-consume { background-color: #28a745; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; flex: 1; text-align: center; }
+        .btn-consume-all { background-color: #f63636; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; flex: 1; text-align: center; }
+        .btn-consume:hover, .btn-consume-all:hover { opacity: 0.8; }
     </style>
 </head>
 <body>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('appTheme') || 'light');</script>
 
     <div class="header-container">
-        <h2 style="margin:0;">📦 Inventory Dashboard</h2>
-        <div>
-            <a href="/" class="nav-btn">➕ Add Food</a>
-            <a href="/failed" class="nav-btn" style="background: #dc3545; margin-left: 5px;">⚠️ Failed Scans</a>
-            <a href="/analytics" class="nav-btn" style="background: #17a2b8; margin-left: 5px;">📊 Analytics</a>
-        </div>
+        <a href="/" class="nav-btn">⬅ Back to Dashboard</a>
+        <h2 style="margin:0;">📦 Inventory</h2>
     </div>
 
-    <div class="toolbar">
-        <div>
-            <button class="btn-action" style="background: #007bff;" onclick="switchView('table')">📋 Table</button>
-            <button class="btn-action" style="background: #6c757d;" onclick="switchView('calendar')">📅 Calendar</button>
-        </div>
-        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-            <select id="locationFilter" onchange="renderTable(); renderCalendar();" style="padding: 8px; border-radius: 5px;">
-                <option value="All">All Locations</option>
-            </select>
-            <button class="btn-action btn-batch" onclick="consumeBatch()">✔️ Consume Selected</button>
-        </div>
-    </div>
-
-    <!-- ADDED: The class="table-responsive" wrapper to enable horizontal swipe-scrolling -->
-    <div id="tableViewContainer" class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="selectAll" onclick="toggleAll()"></th>
-                    <th>Product</th>
-                    <th>Loc / Qty</th>
-                    <th>Expiration Date</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="inventoryTableBody">
-                <tr><td colspan="6" style="text-align: center;">Loading...</td></tr>
-            </tbody>
-        </table>
-    </div>
-
-    <div id="calendarViewContainer" class="calendar-container">
-        <div class="calendar-header">
-            <button class="btn-action" style="background: #6c757d;" onclick="changeMonth(-1)">◀ Prev</button>
-            <h3 id="calendarMonthYear">Month Year</h3>
-            <button class="btn-action" style="background: #6c757d;" onclick="changeMonth(1)">Next ▶</button>
-        </div>
-        <!-- ADDED: Responsive wrapper for horizontal scrolling -->
-        <div class="calendar-responsive">
-            <div class="calendar-grid" id="calendarGrid"></div>
-        </div>
-    </div>
+    <div id="inventoryList">Loading...</div>
 
     <script>
-        // SECURITY INTERCEPTOR: Automatically attach PIN to POST/DELETE requests
-        const originalFetch = window.fetch;
-        window.fetch = async function() {
-            let [resource, config] = arguments;
-            
-            // Only protect actions that change data (POST/DELETE)
-            if (config && (config.method === 'POST' || config.method === 'DELETE')) {
-                let pin = localStorage.getItem('appPin');
-                if (!pin) {
-                    pin = prompt("🔒 Enter App PIN to authorize this action:");
-                    if (!pin) throw new Error("Action cancelled: No PIN provided.");
-                    localStorage.setItem('appPin', pin);
-                }
-                
-                // Attach the PIN to the headers
-                config.headers = { ...config.headers, 'X-App-PIN': pin };
-            }
-            
-            let response = await originalFetch(resource, config);
-            
-            // If the backend rejects the PIN, clear it and warn the user
-            if (response.status === 401) {
-                localStorage.removeItem('appPin');
-                alert("❌ Incorrect PIN! Action blocked.");
-            }
-            return response;
-        };
-
         let globalItems = [];
-        let currentMonthDate = new Date();
 
         async function loadInventory() {
-            try {
-                const response = await fetch('/api/inventory');
-                const data = await response.json();
-                globalItems = data.items;
-                
-                const uniqueLocations = [...new Set(globalItems.map(item => item.location))].sort();
-                const filterSelect = document.getElementById('locationFilter');
-                const currentSelection = filterSelect.value;
-                
-                filterSelect.innerHTML = '<option value="All">All Locations</option>';
-                uniqueLocations.forEach(loc => {
-                    if (loc) filterSelect.innerHTML += `<option value="${loc}">${loc}</option>`;
-                });
-                
-                if (uniqueLocations.includes(currentSelection) || currentSelection === 'All') {
-                    filterSelect.value = currentSelection;
-                }
+            const response = await fetch('/api/inventory');
+            const data = await response.json();
+            const list = document.getElementById('inventoryList');
+            list.innerHTML = '';
+            
+            globalItems = data.items;
 
-                renderTable();
-                renderCalendar();
-            } catch (error) {
-                console.error("Failed to load:", error);
-            }
-        }
-
-        function renderTable() {
-            const tbody = document.getElementById('inventoryTableBody');
-            const filterLoc = document.getElementById('locationFilter').value;
-            tbody.innerHTML = '';
-
-            let filteredItems = globalItems;
-            if (filterLoc !== 'All') filteredItems = globalItems.filter(item => item.location === filterLoc);
-
-            if (filteredItems.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No items found.</td></tr>';
+            if (globalItems.length === 0) {
+                list.innerHTML = '<p style="text-align:center;">Your inventory is empty!</p>';
                 return;
             }
 
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            filteredItems.forEach(item => {
+            globalItems.forEach(item => {
                 const expDate = new Date(item.expiration_date);
-                const diffDays = Math.ceil((expDate - today) / 86400000);
+                const daysLeft = Math.ceil((expDate - new Date()) / (1000 * 60 * 60 * 24));
+                
+                let statusColor = "green";
+                let statusText = `${daysLeft} days left`;
+                
+                if (daysLeft < 0) { statusColor = "red"; statusText = "EXPIRED!"; }
+                else if (daysLeft <= 3) { statusColor = "orange"; statusText = "Expiring Soon!"; }
 
-                let statusHtml = diffDays < 0 ? `<span class="status-expired">⚠️ EXPIRED</span>` :
-                                 diffDays === 0 ? `<span class="status-expired">⚠️ Today!</span>` :
-                                 diffDays <= 7 ? `<span class="status-warning">🕒 ${diffDays} days</span>` :
-                                 `<span class="status-good">${diffDays} days</span>`;
+                list.innerHTML += `
+                    <div class="card">
+                        <div class="item-info">
+                            <h3>${item.product_name}</h3>
+                            <p><b>Expires:</b> ${item.expiration_date} <span style="color:${statusColor}; font-weight:bold;">(${statusText})</span></p>
+                            <p><b>Location:</b> ${item.location || 'Unassigned'}</p>
+                        </div>
+                        
+                        <div class="qty-controls">
+                            <button class="qty-btn" onclick="updateQuantity(${item.id}, ${item.quantity - 1})">−</button>
+                            <span class="qty-display">${item.quantity}</span>
+                            <button class="qty-btn" onclick="updateQuantity(${item.id}, ${item.quantity + 1})">+</button>
+                        </div>
 
-                tbody.innerHTML += `
-                    <tr>
-                        <td><input type="checkbox" class="item-checkbox" value="${item.id}"></td>
-                        <td><strong>${item.product_name}</strong></td>
-                        <td>
-                            <span class="loc-badge">${item.location}</span>
-                            <input type="number" class="qty-input" value="${item.quantity}" min="0" onchange="updateQuantity(${item.id}, this.value)" title="Edit Quantity">
-                        </td>
-                        <td>${item.expiration_date}</td>
-                        <td>${statusHtml}</td>
-                        <td>
-                            <button class="btn-action btn-dec" onclick="decrementItem(${item.id})">➖ Use 1</button>
-                            <button class="btn-action btn-consume" onclick="consumeItem(${item.id})">✔️ All</button>
-                        </td>
-                    </tr>
+                        <!-- NEW: Consume 1 & Consume All Buttons -->
+                        <div class="action-buttons">
+                            <button class="btn-consume" onclick="decrementItem(${item.id})">🍽️ Consume 1</button>
+                            <button class="btn-consume-all" onclick="consumeItem(${item.id})">✔️ Consume All</button>
+                        </div>
+                    </div>
                 `;
             });
-        }
-
-        function toggleAll() {
-            const isChecked = document.getElementById('selectAll').checked;
-            document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = isChecked);
-        }
-
-        async function decrementItem(id) {
-            await fetch(`/api/decrement/${id}`, { method: 'POST' });
-            loadInventory();
         }
 
         async function updateQuantity(id, newQty) {
             newQty = parseInt(newQty);
             if (isNaN(newQty)) return loadInventory(); 
 
-            // Find the item's previous quantity so we can revert if cancelled
             const item = globalItems.find(i => i.id === id);
             const oldQty = item ? item.quantity : 1;
 
@@ -237,12 +107,10 @@
                 return loadInventory();
             }
 
-            // 1. GET AND VERIFY PIN BEFORE FIRING THE FETCH
             let pin = localStorage.getItem('appPin');
             if (!pin) {
                 pin = prompt("🔒 Enter App PIN to authorize this action:");
                 if (!pin) {
-                    // User hit ESC or Cancel: revert the input box back to its original state
                     loadInventory();
                     return; 
                 }
@@ -250,7 +118,6 @@
             }
 
             try {
-                // 2. FIRE THE FETCH WITH THE PIN ATTACHED EXPLICITLY
                 const response = await fetch(`/api/update_quantity/${id}?quantity=${newQty}`, {
                     method: 'POST',
                     headers: { 'X-App-PIN': pin }
@@ -259,14 +126,30 @@
                 if (response.status === 401) {
                     localStorage.removeItem('appPin');
                     alert("❌ Incorrect PIN! Action blocked.");
-                    loadInventory();
-                } else if (!response.ok) {
-                    alert('❌ Failed to update quantity.');
-                    loadInventory();
-                } else {
-                    // Success! Refresh the inventory data
-                    loadInventory();
                 }
+                loadInventory();
+            } catch (err) {
+                alert('❌ Network error.');
+                loadInventory();
+            }
+        }
+
+        // NEW: Decrement function to handle the "Consume 1" button
+        async function decrementItem(id) {
+            let pin = localStorage.getItem('appPin');
+            if (!pin) {
+                pin = prompt("🔒 Enter App PIN:");
+                if (!pin) return;
+                localStorage.setItem('appPin', pin);
+            }
+
+            try {
+                const response = await fetch(`/api/decrement/${id}`, { method: 'POST', headers: { 'X-App-PIN': pin }});
+                if (response.status === 401) {
+                    localStorage.removeItem('appPin');
+                    alert("❌ Incorrect PIN!");
+                }
+                loadInventory();
             } catch (err) {
                 alert('❌ Network error.');
                 loadInventory();
@@ -274,77 +157,29 @@
         }
 
         async function consumeItem(id) {
-            if (!confirm("Consume all remaining quantity?")) return;
-            await fetch(`/api/consume/${id}`, { method: 'POST' });
-            loadInventory();
-        }
-
-        async function consumeBatch() {
-            const checked = Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => parseInt(cb.value));
-            if (checked.length === 0) return alert("Select items first!");
-            if (!confirm(`Consume ${checked.length} selected items?`)) return;
-
-            await fetch('/api/consume_batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_ids: checked })
-            });
-            loadInventory();
-        }
-
-        function switchView(view) {
-            document.getElementById('tableViewContainer').style.display = view === 'table' ? 'block' : 'none';
-            document.getElementById('calendarViewContainer').style.display = view === 'calendar' ? 'block' : 'none';
-        }
-
-        function renderCalendar() {
-            const grid = document.getElementById('calendarGrid');
-            const monthYearLabel = document.getElementById('calendarMonthYear');
-            grid.innerHTML = '';
-
-            const filterLoc = document.getElementById('locationFilter').value;
-            let filteredItems = globalItems;
-            if (filterLoc !== 'All') filteredItems = globalItems.filter(item => item.location === filterLoc);
-
-            const year = currentMonthDate.getFullYear();
-            const month = currentMonthDate.getMonth();
-            monthYearLabel.innerText = currentMonthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => grid.innerHTML += `<div class="calendar-day-header">${d}</div>`);
-
-            const firstDayIndex = new Date(year, month, 1).getDay();
-            const totalDays = new Date(year, month + 1, 0).getDate();
-            const prevTotalDays = new Date(year, month, 0).getDate();
-            const today = new Date(); today.setHours(0,0,0,0);
-
-            for (let i = firstDayIndex; i > 0; i--) {
-                grid.innerHTML += `<div class="calendar-cell other-month"><div class="calendar-date-num">${prevTotalDays - i + 1}</div></div>`;
+            if (!confirm('Mark all of this item as consumed?')) return;
+            
+            let pin = localStorage.getItem('appPin');
+            if (!pin) {
+                pin = prompt("🔒 Enter App PIN:");
+                if (!pin) return;
+                localStorage.setItem('appPin', pin);
             }
 
-            for (let day = 1; day <= totalDays; day++) {
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const matchingItems = filteredItems.filter(item => item.expiration_date === dateStr);
-
-                let badgesHtml = '';
-                matchingItems.forEach(item => {
-                    const expDate = new Date(item.expiration_date);
-                    let badgeClass = expDate < today ? '' : (expDate - today) / 86400000 <= 7 ? 'warning' : 'good';
-                    badgesHtml += `<span class="expiry-badge ${badgeClass}" title="${item.product_name}">📦 [${item.quantity}] ${item.product_name}</span>`;
-                });
-
-                grid.innerHTML += `<div class="calendar-cell"><div class="calendar-date-num">${day}</div>${badgesHtml}</div>`;
-            }
-
-            const totalCellsSoFar = firstDayIndex + totalDays;
-            const remainingCells = (totalCellsSoFar % 7 === 0) ? 0 : 7 - (totalCellsSoFar % 7);
-            for (let i = 1; i <= remainingCells; i++) {
-                grid.innerHTML += `<div class="calendar-cell other-month"><div class="calendar-date-num">${i}</div></div>`;
+            try {
+                const response = await fetch(`/api/consume/${id}`, { method: 'POST', headers: { 'X-App-PIN': pin }});
+                if (response.status === 401) {
+                    localStorage.removeItem('appPin');
+                    alert("❌ Incorrect PIN!");
+                }
+                loadInventory();
+            } catch (err) {
+                alert('❌ Network error.');
+                loadInventory();
             }
         }
 
-        function changeMonth(dir) { currentMonthDate.setMonth(currentMonthDate.getMonth() + dir); renderCalendar(); }
-        
-        loadInventory();
+        window.onload = loadInventory;
     </script>
 </body>
 </html>

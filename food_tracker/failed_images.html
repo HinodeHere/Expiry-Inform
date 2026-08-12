@@ -3,34 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Failed Scans</title>
+    <title>🍏 FreshTrack - Failed Scans</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        :root {
+            --bg-color: #f4f4f9; --card-bg: white; --text-color: #333; 
+            --shadow: rgba(0,0,0,0.1); --border-color: #ddd;
+        }
+        [data-theme="dark"] {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #f4f4f9; 
+            --shadow: rgba(0,0,0,0.5); --border-color: #444;
+        }
         
-        .header-container { width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; transition: 0.3s; }
+        
+        .header-container { width: 100%; max-width: 600px; display: flex; justify-content: flex-start; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
         .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
         .nav-btn:hover { background: #5a6268; }
         
         .gallery { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 600px; }
-        .card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+        .card { background: var(--card-bg); padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px var(--shadow); position: relative; transition: 0.3s;}
         img { width: 100%; border-radius: 5px; margin-bottom: 10px; }
         
-        .raw-text-box { background: #e9ecef; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; color: #333; white-space: pre-wrap; overflow-x: auto; margin-bottom: 10px; }
+        .raw-text-box { background: var(--bg-color); color: var(--text-color); padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap; overflow-x: auto; margin-bottom: 10px; border: 1px solid var(--border-color); transition: 0.3s; }
         
         .btn-delete { background-color: #dc3545; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; }
         .btn-delete:hover { background-color: #c82333; }
-        .no-data { text-align: center; color: #666; margin-top: 50px; }
+        .no-data { text-align: center; margin-top: 50px; }
     </style>
 </head>
 <body>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('appTheme') || 'light');</script>
 
     <div class="header-container">
+        <a href="/" class="nav-btn">⬅ Back to Dashboard</a>
         <h2 style="margin:0;">⚠️ Failed Scans</h2>
-        <div>
-            <a href="/" class="nav-btn">➕ Add Food</a>
-            <a href="/inventory" class="nav-btn" style="margin-left:5px;">📦 Inventory</a>
-        </div>
     </div>
 
     <div class="gallery" id="gallery">
@@ -38,7 +45,6 @@
     </div>
 
     <script>
-        // SECURITY INTERCEPTOR
         const originalFetch = window.fetch;
         window.fetch = async function() {
             let [resource, config] = arguments;
@@ -72,15 +78,12 @@
 
                 gallery.innerHTML = '';
                 for (const file of data.images) {
-                    // Try to fetch the corresponding .txt file
                     const txtFile = file.substring(0, file.lastIndexOf('.')) + '.txt';
                     let rawText = "No text captured.";
                     try {
                         const txtResponse = await fetch(`/failed_data/${txtFile}`);
-                        if (txtResponse.ok) {
-                            rawText = await txtResponse.text();
-                        }
-                    } catch(e) {} // Ignore if no text file exists
+                        if (txtResponse.ok) rawText = await txtResponse.text();
+                    } catch(e) {} 
 
                     gallery.innerHTML += `
                         <div class="card">
@@ -98,11 +101,8 @@
 
         async function deleteImage(filename) {
             if (!confirm("Delete this image and its raw text permanently?")) return;
-            
             const response = await fetch(`/api/failed_images/${filename}`, { method: 'DELETE' });
-            if (response.ok) {
-                loadImages(); // Refresh the list
-            }
+            if (response.ok) loadImages(); 
         }
 
         window.onload = loadImages;

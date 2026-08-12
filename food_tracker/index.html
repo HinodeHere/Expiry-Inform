@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food & Expiry Tracker</title>
+    <title>🍏 FreshTrack</title>
     <style>
         /* CSS VARIABLES FOR DARK/LIGHT MODE */
         :root {
@@ -71,28 +71,31 @@
             width: 100%;
             background-color: var(--sidebar-bg);
             padding: 15px 20px;
-            justify-content: space-between;
+            justify-content: flex-start; /* Changed to left-align */
+            gap: 15px; /* Added spacing between menu and title */
             align-items: center;
             box-shadow: 0 2px 5px var(--shadow);
             color: white;
             z-index: 11;
         }
         
-        .hamburger {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-        }
+        .hamburger { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0;}
 
         /* --- UI COMPONENTS --- */
-        .nav-btn { display: block; padding: 12px 15px; background: #34495e; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; text-align: center; border: none; cursor: pointer; width: 100%;}
-        .nav-btn:hover { background: #3d566e; }
+        .nav-btn { display: block; padding: 12px 15px; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; text-align: center; border: none; cursor: pointer; width: 100%;}
         .nav-btn.inventory { background: #6c757d; }
         .nav-btn.failed { background: #dc3545; }
         .nav-btn.analytics { background: #17a2b8; }
-        .nav-btn.theme-toggle { background: #f39c12; color: black; margin-top: auto; }
+        .nav-btn:hover { opacity: 0.8; }
+        
+        /* THEME TOGGLE SWITCH */
+        .theme-switch-wrapper { display: flex; align-items: center; justify-content: space-between; padding: 10px 5px; margin-top: auto; color: white; font-weight: bold; font-size: 14px;}
+        .theme-switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .theme-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; border-radius: 26px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #28a745; }
+        input:checked + .slider:before { transform: translateX(24px); }
         
         .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px var(--shadow); width: 100%; max-width: 500px; margin-bottom: 20px; transition: background-color 0.3s; }
         
@@ -106,7 +109,7 @@
         button.action-btn:hover { background-color: #0056b3; }
         #statusMessage { font-weight: bold; margin-top: 10px; text-align: center; }
 
-        /* Input Wrappers (From previous step) */
+        /* Input Wrappers */
         .input-wrapper { position: relative; display: flex; align-items: center; margin-bottom: 10px; }
         .input-wrapper input { margin-bottom: 0; padding-right: 40px; }
         .clear-btn { position: absolute; right: 5px; background: transparent; border: none; color: var(--text-color); font-size: 16px; padding: 0; margin: 0; width: 30px; min-height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.6; }
@@ -123,15 +126,15 @@
             body { flex-direction: column; }
             .mobile-header { display: flex; }
             .sidebar { 
-                display: none; /* Hidden by default on mobile */
+                display: none; 
                 width: 100%; 
                 border-radius: 0 0 10px 10px;
                 position: absolute;
                 top: 60px;
                 left: 0;
             }
-            .sidebar.active { display: flex; } /* Toggled via JS */
-            .sidebar h2 { display: none; } /* Hide the logo text in the dropdown since it's in the header */
+            .sidebar.active { display: flex; } 
+            .sidebar h2 { display: none; } 
         }
     </style>
 </head>
@@ -139,18 +142,26 @@
 
     <!-- Mobile Header -->
     <div class="mobile-header">
-        <h2 style="margin:0; font-size: 18px;">🛒 Add Food</h2>
+        <!-- Swapped order: Hamburger first, Title second -->
         <button class="hamburger" onclick="toggleMenu()">☰</button>
+        <h2 style="margin:0; font-size: 18px;">🍏 FreshTrack</h2>
     </div>
 
     <!-- Sidebar Navigation -->
     <div class="sidebar" id="sidebar">
-        <h2>🛒 Add Food</h2>
+        <h2>🍏 FreshTrack</h2>
         <a href="/inventory" class="nav-btn inventory">📦 Inventory</a>
         <a href="/failed" class="nav-btn failed">⚠️ Failed Scans</a>
         <a href="/analytics" class="nav-btn analytics">📊 Analytics</a>
         
-        <button class="nav-btn theme-toggle" onclick="toggleTheme()">🌗 Toggle Dark Mode</button>
+        <!-- Toggle Switch -->
+        <div class="theme-switch-wrapper">
+            <span>Dark Mode</span>
+            <label class="theme-switch" for="themeCheckbox">
+                <input type="checkbox" id="themeCheckbox" onchange="toggleTheme(this.checked)" />
+                <div class="slider"></div>
+            </label>
+        </div>
     </div>
 
     <!-- Main Content Area -->
@@ -210,13 +221,17 @@
 
     <script>
         // --- THEME & MENU LOGIC ---
-        // Load saved theme on startup
         const savedTheme = localStorage.getItem('appTheme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            if (savedTheme === 'dark') {
+                document.getElementById('themeCheckbox').checked = true;
+            }
+        });
 
-        function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        function toggleTheme(isDark) {
+            const newTheme = isDark ? 'dark' : 'light';
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('appTheme', newTheme);
         }
