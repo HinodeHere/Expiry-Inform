@@ -1,120 +1,242 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Food & Expiry Tracker</title>
     <style>
+        /* CSS VARIABLES FOR DARK/LIGHT MODE */
+        :root {
+            --bg-color: #f4f4f9;
+            --card-bg: white;
+            --text-color: #333;
+            --label-color: #333;
+            --input-bg: white;
+            --input-border: #ccc;
+            --btn-text: white;
+            --shadow: rgba(0,0,0,0.1);
+            --sidebar-bg: #2c3e50;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #f4f4f9;
+            --label-color: #aaa;
+            --input-bg: #2d2d2d;
+            --input-border: #444;
+            --btn-text: #f4f4f9;
+            --shadow: rgba(0,0,0,0.5);
+            --sidebar-bg: #1a252f;
+        }
+
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         
-        .header-container { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
-        .nav-btn { padding: 10px 15px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; }
-        .nav-btn:hover { background: #5a6268; }
+        body { 
+            font-family: -apple-system, sans-serif; 
+            background-color: var(--bg-color); 
+            color: var(--text-color);
+            margin: 0; 
+            display: flex; 
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* --- LAYOUT: SIDEBAR & MAIN CONTENT --- */
+        .sidebar {
+            width: 250px;
+            background-color: var(--sidebar-bg);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 2px 0 5px var(--shadow);
+            z-index: 10;
+        }
+
+        .sidebar h2 { color: white; margin-top: 0; text-align: center; font-size: 20px;}
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-y: auto;
+        }
+
+        /* Mobile Header (Hidden on Desktop) */
+        .mobile-header {
+            display: none;
+            width: 100%;
+            background-color: var(--sidebar-bg);
+            padding: 15px 20px;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px var(--shadow);
+            color: white;
+            z-index: 11;
+        }
         
-        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; margin-bottom: 20px; }
+        .hamburger {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* --- UI COMPONENTS --- */
+        .nav-btn { display: block; padding: 12px 15px; background: #34495e; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; text-align: center; border: none; cursor: pointer; width: 100%;}
+        .nav-btn:hover { background: #3d566e; }
+        .nav-btn.inventory { background: #6c757d; }
+        .nav-btn.failed { background: #dc3545; }
+        .nav-btn.analytics { background: #17a2b8; }
+        .nav-btn.theme-toggle { background: #f39c12; color: black; margin-top: auto; }
+        
+        .card { background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px var(--shadow); width: 100%; max-width: 500px; margin-bottom: 20px; transition: background-color 0.3s; }
         
         .btn-scan { display: block; width: 100%; padding: 15px; background-color: #28a745; color: white; text-align: center; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
         .btn-scan:hover { background-color: #218838; }
         
-        label { display: block; font-weight: bold; color: #333; margin-top: 10px; margin-bottom: 5px; font-size: 14px; }
-        input, select { display: block; width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; background-color: white; min-height: 44px; }
+        label { display: block; font-weight: bold; color: var(--label-color); margin-top: 10px; margin-bottom: 5px; font-size: 14px; }
+        input, select { display: block; width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid var(--input-border); border-radius: 5px; font-family: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; background-color: var(--input-bg); color: var(--text-color); min-height: 44px; transition: background-color 0.3s, color 0.3s; }
         
-        button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        button:hover { background-color: #0056b3; }
+        button.action-btn { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        button.action-btn:hover { background-color: #0056b3; }
         #statusMessage { font-weight: bold; margin-top: 10px; text-align: center; }
 
-        /* NEW UI ADDITIONS */
+        /* Input Wrappers (From previous step) */
         .input-wrapper { position: relative; display: flex; align-items: center; margin-bottom: 10px; }
-        .input-wrapper input { margin-bottom: 0; padding-right: 40px; /* Leaves space so text doesn't type under the X */ }
-        .clear-btn { position: absolute; right: 5px; background: transparent; border: none; color: #888; font-size: 16px; padding: 0; margin: 0; width: 30px; min-height: 30px; cursor: pointer; margin-top: 0; display: flex; align-items: center; justify-content: center; }
-        .clear-btn:hover { background: transparent; color: #dc3545; }
+        .input-wrapper input { margin-bottom: 0; padding-right: 40px; }
+        .clear-btn { position: absolute; right: 5px; background: transparent; border: none; color: var(--text-color); font-size: 16px; padding: 0; margin: 0; width: 30px; min-height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.6; }
+        .clear-btn:hover { color: #dc3545; opacity: 1; }
 
-        .qty-wrapper { display: flex; align-items: center; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; background: white; margin-bottom: 10px; height: 44px; }
+        .qty-wrapper { display: flex; align-items: center; border: 1px solid var(--input-border); border-radius: 5px; overflow: hidden; background: var(--input-bg); margin-bottom: 10px; height: 44px; }
         .qty-wrapper input { border: none; margin: 0; border-radius: 0; text-align: center; width: 100%; -moz-appearance: textfield; min-height: auto; padding: 0; }
         .qty-wrapper input::-webkit-outer-spin-button, .qty-wrapper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .qty-btn { background: #e9ecef; color: #333; border: none; padding: 0 15px; font-size: 20px; font-weight: bold; cursor: pointer; margin: 0; border-radius: 0; height: 100%; width: auto; display: flex; align-items: center; justify-content: center; }
-        .qty-btn:hover { background: #d3d9df; }
+        .qty-btn { background: var(--input-border); color: var(--text-color); border: none; padding: 0 15px; font-size: 20px; font-weight: bold; cursor: pointer; margin: 0; border-radius: 0; height: 100%; width: auto; display: flex; align-items: center; justify-content: center; }
+        .qty-btn:hover { opacity: 0.8; }
+
+        /* --- RESPONSIVE MOBILE BEHAVIOR --- */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .mobile-header { display: flex; }
+            .sidebar { 
+                display: none; /* Hidden by default on mobile */
+                width: 100%; 
+                border-radius: 0 0 10px 10px;
+                position: absolute;
+                top: 60px;
+                left: 0;
+            }
+            .sidebar.active { display: flex; } /* Toggled via JS */
+            .sidebar h2 { display: none; } /* Hide the logo text in the dropdown since it's in the header */
+        }
     </style>
 </head>
 <body>
 
-    <div class="header-container">
-        <h2 style="margin:0;">🛒 Add Food</h2>
-        <div>
-            <a href="/inventory" class="nav-btn">📦 Inventory</a>
-            <a href="/failed" class="nav-btn" style="background: #dc3545; margin-left: 5px;">⚠️ Failed Scans</a>
-            <a href="/analytics" class="nav-btn" style="background: #17a2b8; margin-left: 5px;">📊 Analytics</a>
-        </div>
+    <!-- Mobile Header -->
+    <div class="mobile-header">
+        <h2 style="margin:0; font-size: 18px;">🛒 Add Food</h2>
+        <button class="hamburger" onclick="toggleMenu()">☰</button>
     </div>
 
-    <div class="card">
-        <label for="cameraInput" class="btn-scan">📸 Snap Photo of Expiry Label</label>
-        <input type="file" id="cameraInput" accept="image/*" multiple style="display: none;">
-        <div id="statusMessage"></div>
-        <button id="btnReport" style="display: none; background-color: #ffc107; color: black; margin-top: 15px;" onclick="reportBadScan()">⚠️ Output Incorrect? Save Image for Review</button>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebar">
+        <h2>🛒 Add Food</h2>
+        <a href="/inventory" class="nav-btn inventory">📦 Inventory</a>
+        <a href="/failed" class="nav-btn failed">⚠️ Failed Scans</a>
+        <a href="/analytics" class="nav-btn analytics">📊 Analytics</a>
+        
+        <button class="nav-btn theme-toggle" onclick="toggleTheme()">🌗 Toggle Dark Mode</button>
     </div>
 
-    <div class="card" id="manualForm">
-        <label>Product Name</label>
-        <!-- NEW: Clearable Product Name Input -->
-        <div class="input-wrapper">
-            <input list="nameHistory" type="text" id="productName" placeholder="e.g., Milk">
-            <button type="button" class="clear-btn" onclick="document.getElementById('productName').value = ''">✖</button>
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <div class="card">
+            <label for="cameraInput" class="btn-scan">📸 Snap Photo of Expiry Label</label>
+            <input type="file" id="cameraInput" accept="image/*" multiple style="display: none;">
+            <div id="statusMessage"></div>
+            <button id="btnReport" class="action-btn" style="display: none; background-color: #ffc107; color: black; margin-top: 15px;" onclick="reportBadScan()">⚠️ Output Incorrect? Save Image</button>
         </div>
-        <datalist id="nameHistory"></datalist>
 
-        <div style="display: flex; gap: 10px;">
-            <div style="flex: 1;">
-                <label>Quantity</label>
-                <!-- NEW: Quantity Stepper -->
-                <div class="qty-wrapper">
-                    <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
-                    <input type="number" id="quantity" value="1" min="1">
-                    <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+        <div class="card" id="manualForm">
+            <label>Product Name</label>
+            <div class="input-wrapper">
+                <input list="nameHistory" type="text" id="productName" placeholder="e.g., Milk">
+                <button type="button" class="clear-btn" onclick="document.getElementById('productName').value = ''">✖</button>
+            </div>
+            <datalist id="nameHistory"></datalist>
+
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label>Quantity</label>
+                    <div class="qty-wrapper">
+                        <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
+                        <input type="number" id="quantity" value="1" min="1">
+                        <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <label>Location (Optional)</label>
+                    <input list="locationHistory" type="text" id="location" placeholder="e.g., Kitchen Fridge">
+                    <datalist id="locationHistory">
+                        <option value="Kitchen Fridge">
+                        <option value="Deep Freezer">
+                        <option value="Pantry Shelf">
+                    </datalist>
                 </div>
             </div>
-            <div style="flex: 1;">
-                <label>Location (Optional)</label>
-                <input list="locationHistory" type="text" id="location" placeholder="e.g., Kitchen Fridge">
-                <datalist id="locationHistory">
-                    <option value="Kitchen Fridge">
-                    <option value="Deep Freezer">
-                    <option value="Pantry Shelf">
-                </datalist>
+
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label>Production Date</label>
+                    <input type="date" id="prodDate">
+                </div>
+                <div style="flex: 1;">
+                    <label>Shelf Life</label>
+                    <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
+                </div>
             </div>
+
+            <label>Calculated Expiry Date</label>
+            <input type="date" id="expDate">
+
+            <button class="action-btn" onclick="saveToDatabase()">Save to Database</button>
         </div>
-
-        <div style="display: flex; gap: 10px;">
-            <div style="flex: 1;">
-                <label>Production Date</label>
-                <input type="date" id="prodDate">
-            </div>
-            <div style="flex: 1;">
-                <label>Shelf Life</label>
-                <input type="text" id="shelfLife" placeholder="e.g., 12个月 or 7天">
-            </div>
-        </div>
-
-        <label>Calculated Expiry Date</label>
-        <input type="date" id="expDate">
-
-        <button onclick="saveToDatabase()">Save to Database</button>
     </div>
 
     <script>
+        // --- THEME & MENU LOGIC ---
+        // Load saved theme on startup
+        const savedTheme = localStorage.getItem('appTheme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('appTheme', newTheme);
+        }
+
+        function toggleMenu() {
+            document.getElementById('sidebar').classList.toggle('active');
+        }
+
         let lastRawText = ""; 
 
-        // Quantity Stepper Logic
+        // --- QUANTITY STEPPER ---
         function changeQty(amount) {
             const qtyInput = document.getElementById('quantity');
             let currentValue = parseInt(qtyInput.value) || 1;
             let newValue = currentValue + amount;
-            if (newValue < 1) newValue = 1; // Prevent going to 0 or negatives
+            if (newValue < 1) newValue = 1; 
             qtyInput.value = newValue;
         }
 
-        // SECURITY INTERCEPTOR
+        // --- SECURITY INTERCEPTOR ---
         const originalFetch = window.fetch;
         window.fetch = async function() {
             let [resource, config] = arguments;
@@ -209,14 +331,14 @@
                 if (response.ok) {
                     alert('✅ Image and raw text saved to Failed Scans!');
                     btn.style.display = 'none';
-                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                    btn.innerText = "⚠️ Output Incorrect? Save Image";
                 } else {
                     alert('❌ Failed to save image.');
-                    btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                    btn.innerText = "⚠️ Output Incorrect? Save Image";
                 }
             } catch (err) {
                 alert('❌ Network error.');
-                btn.innerText = "⚠️ Output Incorrect? Save Image for Review";
+                btn.innerText = "⚠️ Output Incorrect? Save Image";
             }
         }
 
